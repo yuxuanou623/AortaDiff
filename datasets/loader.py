@@ -14,7 +14,7 @@ g = th.Generator()
 g.manual_seed(0)
 
 
-def get_data_loader(dataset, data_path, config, input, trans, split_set='train', generator=True):
+def get_data_loader(dataset, data_path, config, input, trans, filter, split_set='train', generator=True):
     if dataset == 'brats':
         loader = get_data_loader_brats_cyclic(input, trans, data_path, config.score_model.training.batch_size, config.score_model.image_size,
                                            split_set=split_set)
@@ -23,10 +23,10 @@ def get_data_loader(dataset, data_path, config, input, trans, split_set='train',
                                            split_set=split_set)
     elif dataset == 'oxaaa':
         if split_set == "train":
-            loader = get_data_loader_oxaaa_cyclic(input, trans, data_path, config.score_model.training.batch_size, config.score_model.image_size,
+            loader = get_data_loader_oxaaa_cyclic(input, trans, filter, data_path, config.score_model.training.batch_size, config.score_model.image_size,
                                            split_set=split_set)
         elif split_set == "test":
-            loader = get_data_loader_oxaaa_cyclic(input, trans, data_path, config.sampling.batch_size, config.score_model.image_size,
+            loader = get_data_loader_oxaaa_cyclic(input, trans, filter, data_path, config.sampling.batch_size, config.score_model.image_size,
                                            split_set=split_set)
 
     else:
@@ -101,7 +101,7 @@ def get_data_loader_ldfdct_cyclic(input, trans, path, batch_size, image_size, sp
     
     return th.utils.data.DataLoader(dataset, **default_kwargs)
 
-def get_data_loader_oxaaa_cyclic(input, trans, path, batch_size, image_size, split_set: str = 'train'):
+def get_data_loader_oxaaa_cyclic(input, trans, filter, path, batch_size, image_size, split_set: str = 'train'):
 
     assert split_set in ["train", "test"]
     default_kwargs = {"drop_last": False, "batch_size": batch_size, "pin_memory": False, "num_workers": 0,
@@ -118,6 +118,7 @@ def get_data_loader_oxaaa_cyclic(input, trans, path, batch_size, image_size, spl
             mode='test',
             input_mod=input,
             trans_mod=trans,
+            filter = filter,
             transforms=infer_transforms)
     else:
         
@@ -129,6 +130,7 @@ def get_data_loader_oxaaa_cyclic(input, trans, path, batch_size, image_size, spl
             mode='train',
             input_mod=input,
             trans_mod=trans,
+            filter = filter,
             transforms=train_transforms)
 
     print(f"dataset lenght: {len(dataset)}")

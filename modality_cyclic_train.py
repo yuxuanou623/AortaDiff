@@ -63,8 +63,10 @@ def main(args):
     input = args.input
     trans = args.trans
 
+    filter = args.filter
+
     logger.log("creating data loader...")
-    train_loader = loader.get_data_loader(args.dataset, args.data_dir, config, input, trans, split_set='train', generator=True)
+    train_loader = loader.get_data_loader(args.dataset, args.data_dir, config, input,  trans,filter, split_set='train', generator=True)
     time_load_end = time.time()
     time_load = time_load_end - time_load_start
     logger.log("data loaded: time ", str(time_load))
@@ -106,6 +108,7 @@ if __name__ == "__main__":
     parser.add_argument("--data_dir", help="data directory", type=str, default='/home/trin4156/Downloads/data')
     parser.add_argument("--experiment_name", help="model saving file name", type=str, default='None')
     parser.add_argument("--model_name", help="translated model: unet or diffusion", type=str, default='diffusion')
+    parser.add_argument("--filter", help="a npy to filter data based on pixel difference and mask difference", type=str, default=None)
     args = parser.parse_args()
     main(args)
 

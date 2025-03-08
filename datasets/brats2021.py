@@ -278,10 +278,8 @@ class LDFDCTDataset(Dataset):
 
 
 
-
-
 class OxAAADataset(Dataset):
-    def __init__(self, data_root: str, mode: str, input_mod='noncon', trans_mod='con', transforms=None):
+    def __init__(self, data_root: str, mode: str, input_mod='noncontrast', trans_mod='contrast', transforms=None, filter=None):
         super(OxAAADataset, self).__init__()
         assert mode in ['train', 'test'], 'Unknown mode'
         self.mode = mode
@@ -290,20 +288,26 @@ class OxAAADataset(Dataset):
         self.trans_mod = trans_mod  # Typically 'con'
         self.transforms = transforms
         
-        self.data_root =  Path(self.data_root) 
+        self.data_root =  Path(self.data_root)
        
         # Initialize directories for contrast and non-contrast images
-        self.input_dir = Path(self.data_root) / 'noncontrast'
-        self.trans_dir = Path(self.data_root) / 'contrast'
+        self.input_dir = Path(self.data_root) / self.input_mod
+        self.trans_dir = Path(self.data_root) / self.trans_mod
 
-        print("self.input_dir", self.input_dir)
-        print("self.trans_dir ", self.trans_dir )
-
-        # List of all image names in the input directory
-        self.input_images = sorted(self.input_dir.glob('*.nii.gz'))
+        # Load the filter if provided
+        if filter is not None:
+            self.filter = np.load(filter, allow_pickle=True)  # Load filenames from the npy file
+            self.filter = set(self.filter.tolist())  # Convert to set for faster lookup
+        else:
+            self.filter = None
+        
+        # List all image names in the input directory, possibly filtered
+        self.input_images = sorted([img for img in self.input_dir.glob('*.nii.gz') if self.filter is None or img.name.split('/')[0] in self.filter])
+       
 
         # Dictionary to quickly find corresponding images
         self.image_pairs = self._cache_pairs()
+        
 
     def _cache_pairs(self):
         pairs = {}
@@ -321,12 +325,7 @@ class OxAAADataset(Dataset):
         trans_image = nib.load(trans_img_path).get_fdata()
 
         data_dict = {'input': input_image, 'trans': trans_image}
-        # print("input_image", input_image.shape)
-        # print("trans_image", trans_image.shape)
-        if isinstance(data_dict['input'], bytes) or isinstance(data_dict['trans'], bytes):
-            print("input_img_path",input_img_path)
-            print("trans_img_path",trans_img_path)
-            raise ValueError("Image data is in bytes, expected a numerical array or tensor.")
+        # Transform data if transforms are provided
         if self.transforms:
             data_dict = self.transforms(data_dict)
 
@@ -334,6 +333,61 @@ class OxAAADataset(Dataset):
 
     def __len__(self):
         return len(self.image_pairs)
+
+# class OxAAADataset(Dataset):
+#     def __init__(self, data_root: str, mode: str, input_mod='noncon', trans_mod='con', transforms=None):
+#         super(OxAAADataset, self).__init__()
+#         assert mode in ['train', 'test'], 'Unknown mode'
+#         self.mode = mode
+#         self.data_root = data_root
+#         self.input_mod = input_mod  # Typically 'noncon'
+#         self.trans_mod = trans_mod  # Typically 'con'
+#         self.transforms = transforms
+        
+#         self.data_root =  Path(self.data_root) 
+       
+#         # Initialize directories for contrast and non-contrast images
+#         self.input_dir = Path(self.data_root) / 'noncontrast'
+#         self.trans_dir = Path(self.data_root) / 'contrast'
+
+#         print("self.input_dir", self.input_dir)
+#         print("self.trans_dir ", self.trans_dir )
+
+#         # List of all image names in the input directory
+#         self.input_images = sorted(self.input_dir.glob('*.nii.gz'))
+
+#         # Dictionary to quickly find corresponding images
+#         self.image_pairs = self._cache_pairs()
+
+#     def _cache_pairs(self):
+#         pairs = {}
+#         # Pair images with the same name in input and trans directories
+#         for input_img in self.input_images:
+#             trans_img_path = self.trans_dir / input_img.name
+#             if trans_img_path.exists():
+#                 pairs[input_img] = trans_img_path
+#         return pairs
+
+#     def __getitem__(self, index):
+#         input_img_path, trans_img_path = list(self.image_pairs.items())[index]
+#         # Load images
+#         input_image = nib.load(input_img_path).get_fdata()
+#         trans_image = nib.load(trans_img_path).get_fdata()
+
+#         data_dict = {'input': input_image, 'trans': trans_image}
+#         # print("input_image", input_image.shape)
+#         # print("trans_image", trans_image.shape)
+#         if isinstance(data_dict['input'], bytes) or isinstance(data_dict['trans'], bytes):
+#             print("input_img_path",input_img_path)
+#             print("trans_img_path",trans_img_path)
+#             raise ValueError("Image data is in bytes, expected a numerical array or tensor.")
+#         if self.transforms:
+#             data_dict = self.transforms(data_dict)
+
+#         return data_dict
+
+#     def __len__(self):
+#         return len(self.image_pairs)
     
 # class OxAAADataset(Dataset):
 #     def __init__(self, data_root: str, mode: str, input_mod='noncon', trans_mod='con', transforms=None):
@@ -427,5 +481,6 @@ class OxAAADataset(Dataset):
 
 # plt.tight_layout()
 # plt.show()
-
+# Example of creating a dataset with a filter
+dataset = OxAAADataset(data_root='/mnt/data/data/OxAAA/train/normalized', mode='train', filter='/mnt/data/data/OxAAA/train/qualifying_filename.npy')
 
