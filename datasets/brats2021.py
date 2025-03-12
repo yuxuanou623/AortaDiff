@@ -161,7 +161,7 @@ class BraTS2021Dataset_Cyclic(Dataset):
     def __init__(self, data_root: str, mode: str, input_mod, trans_mod=None, transforms=None):
         super(BraTS2021Dataset_Cyclic, self).__init__()
 
-        assert mode in ['train', 'test'], 'Unknown mode'
+        assert mode in ['train', 'test', 'val'], 'Unknown mode'
         self.mode = mode
         self.data_root = data_root
         self.input_mod = input_mod
@@ -281,7 +281,7 @@ class LDFDCTDataset(Dataset):
 class OxAAADataset(Dataset):
     def __init__(self, data_root: str, mode: str, input_mod='noncontrast', trans_mod='contrast', transforms=None, filter=None):
         super(OxAAADataset, self).__init__()
-        assert mode in ['train', 'test'], 'Unknown mode'
+        assert mode in ['train', 'test', 'val'], 'Unknown mode'
         self.mode = mode
         self.data_root = data_root
         self.input_mod = input_mod  # Typically 'noncon'
@@ -482,5 +482,5 @@ class OxAAADataset(Dataset):
 # plt.tight_layout()
 # plt.show()
 # Example of creating a dataset with a filter
-dataset = OxAAADataset(data_root='/mnt/data/data/OxAAA/train/normalized', mode='train', filter='/mnt/data/data/OxAAA/train/qualifying_filename.npy')
+# dataset = OxAAADataset(data_root='/mnt/data/data/OxAAA/train/normalized', mode='train', filter='/mnt/data/data/OxAAA/train/qualifying_filename.npy')
 

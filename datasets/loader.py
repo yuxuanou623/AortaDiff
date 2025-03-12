@@ -28,6 +28,10 @@ def get_data_loader(dataset, data_path, config, input, trans, filter, split_set=
         elif split_set == "test":
             loader = get_data_loader_oxaaa_cyclic(input, trans, filter, data_path, config.sampling.batch_size, config.score_model.image_size,
                                            split_set=split_set)
+        elif split_set == "val":
+            print("split_set == val")
+            loader = get_data_loader_oxaaa_cyclic(input, trans, filter, data_path, config.sampling.batch_size, config.score_model.image_size,
+                                           split_set=split_set)
 
     else:
         raise Exception("Dataset does exit")
@@ -103,7 +107,7 @@ def get_data_loader_ldfdct_cyclic(input, trans, path, batch_size, image_size, sp
 
 def get_data_loader_oxaaa_cyclic(input, trans, filter, path, batch_size, image_size, split_set: str = 'train'):
 
-    assert split_set in ["train", "test"]
+    assert split_set in ["train", "test", "val"]
     default_kwargs = {"drop_last": False, "batch_size": batch_size, "pin_memory": False, "num_workers": 0,
                       "prefetch_factor": 8, "worker_init_fn": seed_worker, "generator": g, }
     if split_set == "test":
@@ -120,7 +124,7 @@ def get_data_loader_oxaaa_cyclic(input, trans, filter, path, batch_size, image_s
             trans_mod=trans,
             filter = filter,
             transforms=infer_transforms)
-    else:
+    elif split_set == "train":
         
         default_kwargs["shuffle"] = True
         default_kwargs["num_workers"] = 1
@@ -128,6 +132,18 @@ def get_data_loader_oxaaa_cyclic(input, trans, filter, path, batch_size, image_s
         dataset = OxAAADataset(
             data_root=path,
             mode='train',
+            input_mod=input,
+            trans_mod=trans,
+            filter = filter,
+            transforms=train_transforms)
+    else:
+        
+        default_kwargs["shuffle"] = False
+        default_kwargs["num_workers"] = 1
+        train_transforms = get_oxaaa_train_transform_abnormalty_train(image_size)
+        dataset = OxAAADataset(
+            data_root=path,
+            mode='val',
             input_mod=input,
             trans_mod=trans,
             filter = filter,

@@ -66,7 +66,8 @@ def main(args):
     filter = args.filter
 
     logger.log("creating data loader...")
-    train_loader = loader.get_data_loader(args.dataset, args.data_dir, config, input,  trans,filter, split_set='train', generator=True)
+    train_loader = loader.get_data_loader(args.dataset, args.train_data_dir, config, input,  trans,filter, split_set='train', generator=True)
+    val_loader = loader.get_data_loader(args.dataset, args.val_data_dir, config, input,  trans,filter, split_set='val', generator=False)
     time_load_end = time.time()
     time_load = time_load_end - time_load_start
     logger.log("data loaded: time ", str(time_load))
@@ -77,11 +78,13 @@ def main(args):
         model=model,
         diffusion=diffusion,
         data=train_loader,
+        val_data = val_loader,
         batch_size=config.score_model.training.batch_size,
         lr=config.score_model.training.lr,
         ema_rate=config.score_model.training.ema_rate,
         log_interval=config.score_model.training.log_interval,
         save_interval=config.score_model.training.save_interval,
+        val_interval=config.score_model.training.val_interval,
         use_fp16=config.score_model.training.use_fp16,
         fp16_scale_growth=config.score_model.training.fp16_scale_growth,
         schedule_sampler=schedule_sampler,
@@ -101,11 +104,12 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--gpu_id", help="the id of the gpu you want to use, like 0", type=int, default=0)
-    parser.add_argument("--dataset", help="brats", type=str, default='ldfdct')
-    parser.add_argument("--input", help="input modality, choose from flair, t2, t1", type=str, default='ld')
-    parser.add_argument("--trans", help="translated modality, choose from flair, t2, t1", type=str, default='fd')
+    parser.add_argument("--dataset", help="brats", type=str, default='oxaaa')
+    parser.add_argument("--input", help="input modality, choose from flair, t2, t1", type=str, default='noncontrast')
+    parser.add_argument("--trans", help="translated modality, choose from flair, t2, t1", type=str, default='contrast')
     #parser.add_argument("--data_dir", help="data directory", type=str, default='/home/trin4156/Desktop/datasets/nnunet/nnunet_raw/Dataset102_nonconoxaaa2d/OxAAA')
-    parser.add_argument("--data_dir", help="data directory", type=str, default='/home/trin4156/Downloads/data')
+    parser.add_argument("--train_data_dir", help="data directory", type=str, default='/mnt/data/data/OxAAA/train/normalized')
+    parser.add_argument("--val_data_dir", help="data directory", type=str, default='/mnt/data/val')
     parser.add_argument("--experiment_name", help="model saving file name", type=str, default='None')
     parser.add_argument("--model_name", help="translated model: unet or diffusion", type=str, default='diffusion')
     parser.add_argument("--filter", help="a npy to filter data based on pixel difference and mask difference", type=str, default=None)

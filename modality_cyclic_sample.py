@@ -7,7 +7,7 @@ import sys
 import argparse
 import random
 import cv2
-
+from skimage import metrics
 import numpy as np
 import torch as th
 import blobfile as bf
@@ -47,10 +47,10 @@ import numpy as np
 import cv2
 import torch
 
-def save_images(img_pred_all, img_true_all, trans_all, output_folder, n):
+def save_images_and_calculate_metrics(img_pred_all, img_true_all, trans_all, output_folder, n):
     """
     Saves the first `n` images from img_pred_all, img_true_all, and trans_all as a single PNG file with
-    each image side by side.
+    each image side by side, and calculates average PSNR and SSIM for pred vs true and pred vs trans.
 
     Parameters:
     - img_pred_all: (numpy array or torch.Tensor) Predicted images (bs, 1, 512, 512).
@@ -58,6 +58,11 @@ def save_images(img_pred_all, img_true_all, trans_all, output_folder, n):
     - trans_all: (numpy array or torch.Tensor) Transformed images (bs, 1, 512, 512).
     - output_folder: (str) Folder to save combined images.
     - n: (int) Number of images to save.
+    
+    Returns:
+    - Average PSNR between predicted and true images.
+    - Average SSIM between predicted and true images.
+    - Average SSIM between predicted and transformed images.
     """
 
     # Ensure the output directory exists
@@ -74,6 +79,10 @@ def save_images(img_pred_all, img_true_all, trans_all, output_folder, n):
     # Ensure `n` does not exceed available images
     n = min(n, img_pred_all.shape[0], img_true_all.shape[0], trans_all.shape[0])
 
+    psnr_values = []
+    ssim_pred_true_values = []
+    ssim_pred_trans_values = []
+
     # Loop through the first `n` images
     for i in range(n):
         # Normalize and convert images to [0, 255]
@@ -86,13 +95,79 @@ def save_images(img_pred_all, img_true_all, trans_all, output_folder, n):
         true = normalize_image(img_true_all[i])
         trans = normalize_image(trans_all[i])
 
+        # Calculate PSNR and SSIM
+        psnr_pred_true = metrics.peak_signal_noise_ratio(true, pred)
+        ssim_pred_true = metrics.structural_similarity(true, pred)
+        ssim_pred_trans = metrics.structural_similarity(trans, pred)
+
+        psnr_values.append(psnr_pred_true)
+        ssim_pred_true_values.append(ssim_pred_true)
+        ssim_pred_trans_values.append(ssim_pred_trans)
+
         # Stack images horizontally
         combined_image = np.hstack((true, trans, pred))
 
         # Save the combined image
         filename = os.path.join(output_folder, f"combined_image_{i}.png")
         cv2.imwrite(filename, combined_image)
-        print(f"Saved combined image: {filename}")
+
+    # Compute average PSNR and SSIM
+    average_psnr = np.mean(psnr_values)
+    average_ssim_pred_true = np.mean(ssim_pred_true_values)
+    average_ssim_pred_trans = np.mean(ssim_pred_trans_values)
+
+    print(f"Average PSNR (Pred vs True): {average_psnr:.2f} dB")
+    print(f"Average SSIM (Pred vs True): {average_ssim_pred_true:.4f}")
+    print(f"Average SSIM (Pred vs Trans): {average_ssim_pred_trans:.4f}")
+
+    return average_psnr, average_ssim_pred_true, average_ssim_pred_trans
+
+# def save_images(img_pred_all, img_true_all, trans_all, output_folder, n):
+#     """
+#     Saves the first `n` images from img_pred_all, img_true_all, and trans_all as a single PNG file with
+#     each image side by side.
+
+#     Parameters:
+#     - img_pred_all: (numpy array or torch.Tensor) Predicted images (bs, 1, 512, 512).
+#     - img_true_all: (numpy array or torch.Tensor) Ground truth images (bs, 1, 512, 512).
+#     - trans_all: (numpy array or torch.Tensor) Transformed images (bs, 1, 512, 512).
+#     - output_folder: (str) Folder to save combined images.
+#     - n: (int) Number of images to save.
+#     """
+
+#     # Ensure the output directory exists
+#     os.makedirs(output_folder, exist_ok=True)
+
+#     # Convert tensors to NumPy if needed
+#     if isinstance(img_pred_all, torch.Tensor):
+#         img_pred_all = img_pred_all.cpu().numpy()
+#     if isinstance(img_true_all, torch.Tensor):
+#         img_true_all = img_true_all.cpu().numpy()
+#     if isinstance(trans_all, torch.Tensor):
+#         trans_all = trans_all.cpu().numpy()
+
+#     # Ensure `n` does not exceed available images
+#     n = min(n, img_pred_all.shape[0], img_true_all.shape[0], trans_all.shape[0])
+
+#     # Loop through the first `n` images
+#     for i in range(n):
+#         # Normalize and convert images to [0, 255]
+#         def normalize_image(image):
+#             image = np.squeeze(image)  # Remove channel dimension
+#             image = ((image + 1) / 2) * 255  # Convert from [-1, 1] to [0, 255]
+#             return image.astype(np.uint8)
+        
+#         pred = normalize_image(img_pred_all[i])
+#         true = normalize_image(img_true_all[i])
+#         trans = normalize_image(trans_all[i])
+
+#         # Stack images horizontally
+#         combined_image = np.hstack((true, trans, pred))
+
+#         # Save the combined image
+#         filename = os.path.join(output_folder, f"combined_image_{i}.png")
+#         cv2.imwrite(filename, combined_image)
+#         print(f"Saved combined image: {filename}")
 
 
 
@@ -258,7 +333,7 @@ def main(args):
 
     logger.log("creating loader...")
 
-    test_loader = loader.get_data_loader(args.dataset, args.data_dir, config, args.input, args.trans, split_set='test',
+    test_loader = loader.get_data_loader(args.dataset, args.data_dir, config, args.input, args.trans, args.filter, split_set='test',
                                           generator=False)
     
 
@@ -316,7 +391,7 @@ def main(args):
     num_batch = 0
     num_sample = 0
     
-    n=10
+    n=15
     img_true_all = np.zeros((n*(config.sampling.batch_size), config.score_model.num_input_channels, config.score_model.image_size,
              config.score_model.image_size))
     img_pred_all = np.zeros((n*(config.sampling.batch_size), config.score_model.num_input_channels, config.score_model.image_size,
@@ -430,6 +505,7 @@ def main(args):
             """
             return tensor.mean(axis=tuple(range(1, len(tensor.shape))))
         print("meanflat",mean_flat(error))
+        print("meanflat mea ",np.mean(mean_flat(error)))
 
         error = np.array(error)
         print("sum",error.sum())
@@ -441,7 +517,7 @@ def main(args):
         output_folder_true = "/mnt/data/data/evaluation/true" +filename[:-3]      # Change to your actual folder
         output_folder_trans = "/mnt/data/data/evaluation/trans"+filename[:-3]
         # save_images(img_pred_all, img_true_all, trans_all,output_folder_pred, output_folder_true,output_folder_trans,num_sample)
-        save_images(img_pred_all, img_true_all, trans_all,output_folder_pred, num_sample)
+        save_images_and_calculate_metrics(img_pred_all, img_true_all, trans_all,output_folder_pred, num_sample)
     elif args.model_name == 'diffusion_':
         filename_mask = "mask_forward_"+args.experiment_name_forward+'_backward_'+args.experiment_name_backward+".pt"
         filename_x0 = "cyclic_predict_"+args.experiment_name_forward+'_backward_'+args.experiment_name_backward+".pt"
@@ -477,6 +553,7 @@ if __name__ == "__main__":
     parser.add_argument("--timestep_respacing", help="If you want to rescale timestep during sampling. enter the timestep you want to rescale the diffusion prcess to. If you do not wish to resale thetimestep, leave it blank or put 1000.", type=int,
                         default=1000)
     parser.add_argument("--modelfilename", help="brats", type=str, default='model155000_batchsize32_filtereddata.pt')
+    parser.add_argument("--filter", help="a npy to filter data based on pixel difference and mask difference", type=str, default=None)
 
     args = parser.parse_args()
     print(args.dataset)

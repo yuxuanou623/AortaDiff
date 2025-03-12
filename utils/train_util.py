@@ -2,12 +2,14 @@ import copy
 import functools
 import os
 import time
+from tqdm import tqdm
 
 import blobfile as bf
 import torch as th
 import torch.distributed as dist
 from torch.optim import AdamW
 from torch.utils.tensorboard import SummaryWriter
+import numpy as np
 
 from utils import logger
 from utils.fp16_util import MixedPrecisionTrainer
@@ -22,11 +24,13 @@ class TrainLoop:
             model,
             diffusion,
             data,
+            val_data,
             batch_size,
             lr,
             ema_rate,
             log_interval,
             save_interval,
+            val_interval,
             use_fp16=False,
             fp16_scale_growth=1e-3,
             schedule_sampler=None,
@@ -47,6 +51,7 @@ class TrainLoop:
         self.model = model
         self.diffusion = diffusion
         self.data = data
+        self.val_data = val_data
         self.batch_size = batch_size
         self.lr = lr
         self.ema_rate = (
@@ -56,6 +61,7 @@ class TrainLoop:
         )
         self.log_interval = log_interval
         self.save_interval = save_interval
+        self.val_interval = val_interval
         self.use_fp16 = use_fp16
         self.fp16_scale_growth = fp16_scale_growth
         self.schedule_sampler = schedule_sampler or UniformSampler(diffusion)
@@ -84,6 +90,7 @@ class TrainLoop:
         self.recursive_flag = 0
         self.resume_step = 0
         self.sync_cuda = th.cuda.is_available()
+        self.current_loss = 0
 
         self.mp_trainer = MixedPrecisionTrainer(
             model=self.model,
@@ -118,17 +125,35 @@ class TrainLoop:
                 self.log_step()
                 logger.dumpkvs()
                 self.time_iter_start = time.time()
+            if self.step % self.val_interval == 0:  # Validation interval
+                self.run_validation()
             self.step += 1
         # Save the last checkpoint if it wasn't already saved.
         if (self.step - 1) % self.save_interval != 0:
             self.save()
 
-    def run_step(self, data_dict, iteration):
-        self.forward_backward(data_dict, iteration, phase="train")
-        took_step = self.mp_trainer.optimize(self.opt)
-        if took_step:
-            self._update_ema()
-        self.lr_decay()
+
+    def run_validation(self):
+        val_losses = []
+  
+        print(type(self.val_data))
+        for i, val_data_dict in tqdm(enumerate(self.val_data), total = len(self.val_data)):
+            
+            val_loss = self.run_step(val_data_dict, self.step, phase="val")
+           
+            val_losses.append(val_loss.detach().cpu().numpy())
+        avg_val_loss = np.mean(val_losses)
+        self.writer.add_scalar('Val_Loss', avg_val_loss, self.step)
+        print(f"Validation Loss at step {self.step}: {avg_val_loss}")
+
+    def run_step(self, data_dict, iteration, phase="train"):
+        self.forward_backward(data_dict, iteration, phase=phase)
+        if phase == "train":
+            took_step = self.mp_trainer.optimize(self.opt)
+            if took_step:
+                self._update_ema()
+            self.lr_decay()
+        return self.current_loss
 
 
     def forward_backward(self, data_dict, iteration, phase: str = "train"):
@@ -188,8 +213,9 @@ class TrainLoop:
         if phase == "train":
             self.mp_trainer.backward(loss)
 
-        '''plot training loss'''
-        self.writer.add_scalar('Loss', loss.detach().cpu().numpy(), self.step)
+            '''plot training loss'''
+            self.writer.add_scalar('Loss', loss.detach().cpu().numpy(), self.step)
+        self.current_loss = loss
 
 
     def _update_ema(self):
