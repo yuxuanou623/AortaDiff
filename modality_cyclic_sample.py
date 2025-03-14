@@ -122,201 +122,8 @@ def save_images_and_calculate_metrics(img_pred_all, img_true_all, trans_all, out
 
     return average_psnr, average_ssim_pred_true, average_ssim_pred_trans
 
-# def save_images(img_pred_all, img_true_all, trans_all, output_folder, n):
-#     """
-#     Saves the first `n` images from img_pred_all, img_true_all, and trans_all as a single PNG file with
-#     each image side by side.
-
-#     Parameters:
-#     - img_pred_all: (numpy array or torch.Tensor) Predicted images (bs, 1, 512, 512).
-#     - img_true_all: (numpy array or torch.Tensor) Ground truth images (bs, 1, 512, 512).
-#     - trans_all: (numpy array or torch.Tensor) Transformed images (bs, 1, 512, 512).
-#     - output_folder: (str) Folder to save combined images.
-#     - n: (int) Number of images to save.
-#     """
-
-#     # Ensure the output directory exists
-#     os.makedirs(output_folder, exist_ok=True)
-
-#     # Convert tensors to NumPy if needed
-#     if isinstance(img_pred_all, torch.Tensor):
-#         img_pred_all = img_pred_all.cpu().numpy()
-#     if isinstance(img_true_all, torch.Tensor):
-#         img_true_all = img_true_all.cpu().numpy()
-#     if isinstance(trans_all, torch.Tensor):
-#         trans_all = trans_all.cpu().numpy()
-
-#     # Ensure `n` does not exceed available images
-#     n = min(n, img_pred_all.shape[0], img_true_all.shape[0], trans_all.shape[0])
-
-#     # Loop through the first `n` images
-#     for i in range(n):
-#         # Normalize and convert images to [0, 255]
-#         def normalize_image(image):
-#             image = np.squeeze(image)  # Remove channel dimension
-#             image = ((image + 1) / 2) * 255  # Convert from [-1, 1] to [0, 255]
-#             return image.astype(np.uint8)
-        
-#         pred = normalize_image(img_pred_all[i])
-#         true = normalize_image(img_true_all[i])
-#         trans = normalize_image(trans_all[i])
-
-#         # Stack images horizontally
-#         combined_image = np.hstack((true, trans, pred))
-
-#         # Save the combined image
-#         filename = os.path.join(output_folder, f"combined_image_{i}.png")
-#         cv2.imwrite(filename, combined_image)
-#         print(f"Saved combined image: {filename}")
 
 
-
-# def save_images(img_pred_all, img_true_all, trans_all, output_folder_pred, output_folder_true, output_folder_trans, n):
-#     """
-#     Saves the first `n` images from img_pred_all, img_true_all, and trans_all as PNG files.
-
-#     Parameters:
-#     - img_pred_all: (numpy array or torch.Tensor) Predicted images (bs, 1, 512, 512).
-#     - img_true_all: (numpy array or torch.Tensor) Ground truth images (bs, 1, 512, 512).
-#     - trans_all: (numpy array or torch.Tensor) Transformed images (bs, 1, 512, 512).
-#     - output_folder_pred: (str) Folder to save predicted images.
-#     - output_folder_true: (str) Folder to save ground truth images.
-#     - output_folder_trans: (str) Folder to save transformed images.
-#     - n: (int) Number of images to save.
-#     """
-
-#     # Ensure the output directories exist
-#     os.makedirs(output_folder_pred, exist_ok=True)
-#     os.makedirs(output_folder_true, exist_ok=True)
-#     os.makedirs(output_folder_trans, exist_ok=True)
-
-#     # Convert tensors to NumPy if needed
-#     if isinstance(img_pred_all, torch.Tensor):
-#         img_pred_all = img_pred_all.cpu().numpy()
-#     if isinstance(img_true_all, torch.Tensor):
-#         img_true_all = img_true_all.cpu().numpy()
-#     if isinstance(trans_all, torch.Tensor):
-#         trans_all = trans_all.cpu().numpy()
-
-#     # Ensure `n` does not exceed available images
-#     n = min(n, img_pred_all.shape[0], img_true_all.shape[0], trans_all.shape[0])
-
-#     # Loop through the first `n` images
-#     for i in range(n):
-#         pred = np.squeeze(img_pred_all[i, :, :, :])  # Remove channel dim
-#         true = np.squeeze(img_true_all[i, :, :, :])  # Remove channel dim
-#         trans = np.squeeze(trans_all[i, :, :, :])   # Remove channel dim
-        
-
-        
-
-#         clipped_image = np.clip(pred, -1, 1)
-#         normalized_image = ((clipped_image + 1) / 2) * 255  # Convert to [0, 255]
-
-#         true = ((true + 1) / 2) * 255  # Convert to [0, 255]
-#         trans = ((trans + 1) / 2) * 255  # Convert to [0, 255]
-
-#         # Save images
-#         pred_filename = os.path.join(output_folder_pred, f"pred_image_{i}.png")
-#         true_filename = os.path.join(output_folder_true, f"true_image_{i}.png")
-#         trans_filename = os.path.join(output_folder_trans, f"trans_image_{i}.png")
-
-#         cv2.imwrite(pred_filename, normalized_image)
-#         cv2.imwrite(true_filename, true)
-#         cv2.imwrite(trans_filename, trans)
-#         #image = Image.fromarray(pred, mode='L')  # 'L' mode for grayscale
-
-#         # Save the image
-#         #image.save(pred_filename)
-
-#         print(f"Saved: {pred_filename}")
-#         print(f"Saved: {true_filename}")
-#         print(f"Saved: {trans_filename}")
-
-def sliding_window_inference(image, sample_fn, model_forward, model_backward, model_kwargs, config, args,
-                             patch_size=128, stride=128, batch_size=32):
-    """
-    Perform sliding window inference on a (1, 512, 512) image using batched diffusion sampling.
-
-    Parameters:
-    - image: (numpy array) Input image with shape (1, 512, 512).
-    - sample_fn: (function) The sampling function for inference (diffusion.p_sample_loop).
-    - model_forward, model_backward: Forward and backward diffusion models.
-    - model_kwargs: Additional arguments for model inference.
-    - config: Configuration object containing model parameters.
-    - args: Arguments including model names and sampling settings.
-    - patch_size: (int) Size of each patch for inference.
-    - stride: (int) Step size for sliding window (default 64 for overlap).
-    - batch_size: (int) Number of patches to process in parallel.
-
-    Returns:
-    - output: (numpy array) Reconstructed image with shape (1, 512, 512).
-    """
-
-    bs, _, h, w = image.shape  # Extract height and width from (1, 512, 512)
-    output = np.zeros((bs, 1, h, w))  # Maintain batch dimension
-    weight_map = np.zeros((bs, 1, h, w))  # Track blending weights
-
-    patches = []  # Store patches
-    locations = []  # Store patch coordinates
-
-    # Step 1: Extract Patches
-    for b in range(bs) :
-        for i in range(0, h - patch_size + 1, stride):
-            for j in range(0, w - patch_size + 1, stride):
-                
-                patch = image[b ,:, i:i+patch_size, j:j+patch_size]  # Keep batch dimension
-                patches.append(patch)
-                locations.append((b, i, j))  # Store coordinates
-    
-    patches = th.stack(patches).to("cuda")
-    total_patches = patches.shape[0]
-    num_batches = (total_patches + batch_size - 1) // batch_size  # Compute number of batches
-
-    # Step 2: Process in Batches
-    for b in range(num_batches):
-        batch_start = b * batch_size
-        batch_end = min((b + 1) * batch_size, total_patches)
-
-        batch_patches = patches[batch_start:batch_end]  # Select batch
-       
-        #batch_patches = torch.tensor(batch_patches).unsqueeze(1).float()  # Add channel dim: (B, 1, 128, 128)
-
-        # Define shape for diffusion sampling
-        shape = (batch_patches.shape[0], config.score_model.num_input_channels, 
-                 config.score_model.image_size, config.score_model.image_size)
-
-        # Run inference using diffusion model
-        generated_batch = sample_fn(
-            model_forward, model_backward, batch_patches, num_batch=batch_patches.shape[0],
-            shape=shape,
-            model_name=args.model_name,
-            clip_denoised=config.sampling.clip_denoised,  
-            model_kwargs=model_kwargs,  
-            eta=config.sampling.eta,
-            model_forward_name=args.experiment_name_forward,
-            model_backward_name=args.experiment_name_backward,
-            ddim=args.use_ddim
-        )
-
-        # Step 3: Reconstruct the Image
-        for k, (batch_idx, i, j) in enumerate(locations[batch_start:batch_end]):  # ✅ Fix unpacking
-            generated_patch = generated_batch[k].unsqueeze(0)  # Shape: (1, C, 128, 128)
-            weight = torch.ones_like(generated_patch, device="cuda")  # ✅ Ensures correct weight tensor
-      
-            output[batch_idx:batch_idx+1, :, i:i+patch_size, j:j+patch_size] += generated_patch.cpu().numpy() 
-            weight_map[batch_idx:batch_idx+1, :, i:i+patch_size, j:j+patch_size] += weight.cpu().numpy() 
-
-            
-
-
-    # Step 4: Normalize by weights to avoid over-counting in overlapping areas
-    
-    output /= np.clip(weight_map, 1e-6, None)  # ✅ NumPy equivalent of torch.clamp
-
-    
-    
-    return output
 
 def main(args):
     use_gpus = args.gpu_id
@@ -391,7 +198,7 @@ def main(args):
     num_batch = 0
     num_sample = 0
     
-    n=15
+    n=2000
     img_true_all = np.zeros((n*(config.sampling.batch_size), config.score_model.num_input_channels, config.score_model.image_size,
              config.score_model.image_size))
     img_pred_all = np.zeros((n*(config.sampling.batch_size), config.score_model.num_input_channels, config.score_model.image_size,
@@ -458,35 +265,6 @@ def main(args):
         test_data_seg_detach = test_data_seg.detach().cpu().numpy()
         print("test_data_input_detach", test_data_seg_detach.shape)
 
-        # import matplotlib.pyplot as plt
-        
-
-        # # Assuming sample_datach and test_data_input_detach are already loaded as numpy arrays
-        # # You provided code for converting them to numpy arrays, so let's plot their distributions
-
-        # # Plotting the data distribution for sample_datach
-        # plt.figure(figsize=(12, 6))
-
-        # # First subplot for sample_datach
-        # plt.subplot(1, 2, 1)  # 1 row, 2 columns, 1st subplot
-        # plt.hist(sample_datach.flatten(), bins=50, color='blue', alpha=0.7)
-        # plt.title('Distribution of sample_datach')
-        # plt.xlabel('Value')
-        # plt.ylabel('Frequency')
-
-        # # Second subplot for test_data_input_detach
-        # plt.subplot(1, 2, 2)  # 1 row, 2 columns, 2nd subplot
-        # plt.hist(test_data_seg_detach.flatten(), bins=50, color='green', alpha=0.7)
-        # plt.title('Distribution of test_data_input_detach')
-        # plt.xlabel('Value')
-        # plt.ylabel('Frequency')
-
-        # plt.tight_layout()
-        # plt.show()
-
-
-        # import sys
-        # sys.exit()
         print("test_data_input.shape[0]",test_data_input.shape[0])
         print("test_data_input.detach().cpu().numpy()",test_data_input.detach().cpu().numpy().shape)
         img_true_all[num_sample:num_sample+test_data_input.shape[0]] = test_data_input.detach().cpu().numpy()
@@ -514,8 +292,7 @@ def main(args):
         print(type(error_map))
         print("error_map",error_map.sum())
         output_folder_pred = "/mnt/data/data/evaluation/predict" +filename[:-3] + "timestep1000"# Change to your actual folder
-        output_folder_true = "/mnt/data/data/evaluation/true" +filename[:-3]      # Change to your actual folder
-        output_folder_trans = "/mnt/data/data/evaluation/trans"+filename[:-3]
+      
         # save_images(img_pred_all, img_true_all, trans_all,output_folder_pred, output_folder_true,output_folder_trans,num_sample)
         save_images_and_calculate_metrics(img_pred_all, img_true_all, trans_all,output_folder_pred, num_sample)
     elif args.model_name == 'diffusion_':
