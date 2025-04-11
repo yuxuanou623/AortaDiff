@@ -160,12 +160,14 @@ class TrainLoop:
 
         if self.recursive_flag == 0:
             self.batch_image_input = data_dict.pop(self.main_data_indentifier_input)
-            self.batch_image_trans = data_dict.pop(self.main_data_indentifier_trans)
+
             # self.batch_image_seg = data_dict.pop('seg')
             # self.brain_mask = th.ones(self.batch_image_seg.shape) * (data_dict.pop('brainmask') > 0)
 
             self.batch_image_input = self.batch_image_input.to(self.device)  # t1
-            self.batch_image_trans = self.batch_image_trans.to(self.device)  # t2
+            self.batch_masks = data_dict.pop("input_mask_tolerated")
+            self.batch_masks = self.batch_masks.to(self.device)
+
             # self.batch_image_seg = self.batch_image_seg.to(self.device)  # seg
             # self.brain_mask = self.brain_mask.to(self.device)
             self.model_conditionals = data_dict
@@ -187,15 +189,17 @@ class TrainLoop:
         self.model_conditionals = labels
         compute_losses = functools.partial(
             self.diffusion.training_losses,
-            self.model,
-            self.batch_image_input,
-            self.batch_image_trans,
-            self.batch_image_trans,
-            self.args.model_name,
-            self.t,
-            iteration,
-            x0_t,
-            model_kwargs=self.model_conditionals
+            model=self.model,
+            input_img=self.batch_image_input,
+            trans_img=self.batch_image_input,
+            aneurysm_mask = self.batch_masks,
+            aneurysm_square=self.batch_masks,
+            model_name = self.args.model_name,
+            t=self.t,
+            iteration=iteration,
+            x_start_t=x0_t,
+            model_kwargs=self.model_conditionals,
+            noise = None
         )
 
         losses = compute_losses()

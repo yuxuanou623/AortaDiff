@@ -692,7 +692,7 @@ class GaussianDiffusion:
 
 
 
-    def training_losses(self, model, input_img, trans_img, brain_mask, model_name, t,iteration, x_start_t=None, model_kwargs=None, noise=None):
+    def training_losses(self,  model, input_img, trans_img, aneurysm_mask,aneurysm_square,model_name, t,iteration, x_start_t=None, model_kwargs=None, noise=None):
         """
         Compute training losses for a single timestep.
 
@@ -717,22 +717,16 @@ class GaussianDiffusion:
             # input_img = (input_img / 255.0) * 2 - 1
             x_t = self.q_sample(trans_img, noise, self._scale_timesteps(t))
            
-            # print("noise min", th.min(noise))
-            # print("noise max", th.max(noise))
-            ### grid mask ###
-            mask = th.ones(trans_img.shape).cuda()
-            start_pix = random.randint(0, 63) * 2
-            direction = random.randint(0, 1)
-            nonmaskp = 0
+          
 
             
             
-            cond = input_img 
-            x_t_input = th.cat((x_t, cond), 1)
-            mask_difference = input_img- trans_img
+          
+            
+            
            
             # x_start_pred, masks, mask_logits = model(x_t_input, self._scale_timesteps(t), **model_kwargs)
-            x_start_pred= model(x_t_input, self._scale_timesteps(t), **model_kwargs)
+            x_start_pred= model(x_t, self._scale_timesteps(t), **model_kwargs)
             # mask_logits = model(x_t_input, self._scale_timesteps(t), **model_kwargs)
         elif model_name == 'unet':
             x_t_input = input_img
@@ -740,26 +734,6 @@ class GaussianDiffusion:
         
         
        
-
-        def mask_dominance_penalty(masks):
-            """
-            Penalizes masks that have low variance in pixel values across the image.
-            
-            :param masks: Tensor of shape (batch_size, num_masks, H, W)
-            :return: Variance-based punishment loss scalar
-            """
-            # Compute the mean of each mask (per mask, per image)
-            mean = th.mean(masks, dim=(2, 3), keepdim=True)  # Shape: (batch_size, num_masks, 1, 1)
-            
-            # Compute squared deviation from the mean (differentiable)
-            squared_deviation = (masks - mean) ** 2
-            
-            # Compute the mean squared deviation (differentiable variance-like term)
-            pixel_variance = th.mean(squared_deviation, dim=(2, 3))  # Shape: (batch_size, num_masks)
-            
-            # We want to maximize variance, so we penalize low variance
-            return -th.mean(pixel_variance)  # Negative to encourage higher variance
-
 
        
         # masks_penalty = mask_dominance_penalty(mask_logits)
@@ -769,6 +743,7 @@ class GaussianDiffusion:
     #     loss = masks[:, 0, :, :] * (target - x_start_pred) ** 2 + \
     #    masks[:, 1, :, :] * (input_img - x_start_pred) ** 2 
         loss = (target - x_start_pred) ** 2
+        loss = aneurysm_mask*loss
         
         # terms["loss"] = mean_flat(loss) + masks_penalty
         
@@ -848,10 +823,11 @@ class GaussianDiffusion:
             # Log the image to W&B
         if iteration % 200 ==0:
             wandb.log({
-        "Image": wandb.Image(x_start_pred[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
-        "Target": wandb.Image(target[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
-        "Noncon": wandb.Image(input_img[max_index, :, :, :].squeeze(0).detach().cpu().numpy())}, step=iteration)
-
+        "MaskedImage": wandb.Image(aneurysm_mask[max_index, :, :, :].squeeze(0).detach().cpu().numpy()*x_start_pred[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
+        "MaskedTarget": wandb.Image(aneurysm_mask[max_index, :, :, :].squeeze(0).detach().cpu().numpy()*target[max_index, :, :, :].squeeze(0).detach().cpu().numpy()), 
+         "Image": wandb.Image(x_start_pred[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
+        "Target": wandb.Image(target[max_index, :, :, :].squeeze(0).detach().cpu().numpy())},  step=iteration)
+       
 
         return terms
 

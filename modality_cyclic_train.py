@@ -42,7 +42,7 @@ def main(args):
     if args.model_name == 'unet':
         image_level_cond = False
     elif args.model_name == 'diffusion':
-        image_level_cond = True
+        image_level_cond = False
     else:
         raise Exception("Model name does exit")
 
@@ -110,7 +110,7 @@ if __name__ == "__main__":
     parser.add_argument("--trans", help="translated modality, choose from flair, t2, t1", type=str, default='contrast')
     #parser.add_argument("--data_dir", help="data directory", type=str, default='/home/trin4156/Desktop/datasets/nnunet/nnunet_raw/Dataset102_nonconoxaaa2d/OxAAA')
     parser.add_argument("--train_data_dir", help="data directory", type=str, default='/mnt/data/data/OxAAA/train/normalized')
-    parser.add_argument("--val_data_dir", help="data directory", type=str, default='/mnt/data/val')
+    parser.add_argument("--val_data_dir", help="data directory", type=str, default='/mnt/data/data/OxAAA/train/normalized')
     parser.add_argument("--experiment_name", help="model saving file name", type=str, default='None')
     parser.add_argument("--model_name", help="translated model: unet or diffusion", type=str, default='diffusion')
     parser.add_argument("--filter_train", help="a npy to filter data based on pixel difference and mask difference", type=str, default=None)

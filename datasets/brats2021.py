@@ -62,20 +62,30 @@ def get_oxaaa_base_transform_abnormalty_test(image_size):
 
     base_transform = [
         transforms.AddChanneld(
-            keys=['input', 'trans']),
+            keys=['input',  'input_mask_tolerated']),
         transforms.Resized(
-            keys=['input', 'trans'],
+            keys=['input'],
             spatial_size=(image_size, image_size)),
+        transforms.Resized(
+            keys=['input_mask_tolerated'],
+            spatial_size=(image_size, image_size),
+            mode='nearest')
+       
     ]
 
     return base_transform
 def get_oxaaa_base_transform_abnormalty_train(image_size):
     base_transform = [
         transforms.AddChanneld(
-            keys=['input', 'trans']),
+            keys=['input',  'input_mask_tolerated']),
         transforms.Resized(
-            keys=['input', 'trans'],
+            keys=['input'],
             spatial_size=(image_size, image_size)),
+        transforms.Resized(
+            keys=['input_mask_tolerated'],
+            spatial_size=(image_size, image_size),
+            mode='nearest')
+       
     ]
 
     return base_transform
@@ -87,7 +97,7 @@ def get_oxaaa_train_transform_abnormalty_test(image_size):
     base_transform = get_oxaaa_base_transform_abnormalty_test(image_size)
     data_aug = [
         transforms.EnsureTyped(
-            keys=['input', 'trans']),
+            keys=['input', 'input_mask_tolerated']),
     ]
     return transforms.Compose(base_transform + data_aug)
 
@@ -95,7 +105,7 @@ def get_oxaaa_train_transform_abnormalty_train(image_size):
     base_transform = get_oxaaa_base_transform_abnormalty_train(image_size)
     data_aug = [
         transforms.EnsureTyped(
-            keys=['input', 'trans']),
+            keys=['input', 'input_mask_tolerated']),
     ]
     return transforms.Compose(base_transform + data_aug)
 
@@ -279,53 +289,100 @@ class LDFDCTDataset(Dataset):
 
 
 class OxAAADataset(Dataset):
-    def __init__(self, data_root: str, mode: str, input_mod='noncontrast', trans_mod='contrast', transforms=None, filter=None):
+    def __init__(self, data_root: str, mode: str, input_mod='noncontrast', trans_mod='contrast',transforms=None, filter=None):
         super(OxAAADataset, self).__init__()
         assert mode in ['train', 'test', 'val'], 'Unknown mode'
         self.mode = mode
         self.data_root = data_root
-        self.input_mod = input_mod  # Typically 'noncon'
-        self.trans_mod = trans_mod  # Typically 'con'
+        self.input_mod = input_mod  
+        self.trans_mod = trans_mod  
         self.transforms = transforms
         
-        self.data_root =  Path(self.data_root)
+        
+        self.data_root =  Path(self.data_root) 
        
         # Initialize directories for contrast and non-contrast images
-        self.input_dir = Path(self.data_root) / self.input_mod
-        self.trans_dir = Path(self.data_root) / self.trans_mod
+        self.input_dir = Path(self.data_root) / 'noncontrast'
+        self.trans_dir = Path(self.data_root) / 'contrast'
 
-        # Load the filter if provided
+        self.input_mask_dir = Path(self.data_root) / 'noncontrastmask'
+        self.trans_mask_dir = Path(self.data_root) / 'contrastmask'
+
+    
+
         if filter is not None:
             self.filter = np.load(filter, allow_pickle=True)  # Load filenames from the npy file
             self.filter = set(self.filter.tolist())  # Convert to set for faster lookup
         else:
             self.filter = None
-        
-        # List all image names in the input directory, possibly filtered
+
+        # List of all image names in the input directory
         self.input_images = sorted([img for img in self.input_dir.glob('*.nii.gz') if self.filter is None or img.name.split('/')[0] in self.filter])
-       
 
         # Dictionary to quickly find corresponding images
         self.image_pairs = self._cache_pairs()
         
 
     def _cache_pairs(self):
-        pairs = {}
-        # Pair images with the same name in input and trans directories
-        for input_img in self.input_images:
-            trans_img_path = self.trans_dir / input_img.name
-            if trans_img_path.exists():
-                pairs[input_img] = trans_img_path
+        pairs = []
+        if self.mode == 'test':  # If mode is 'test', don't include the masks
+            # Pair images in test mode (no masks)
+            for input_img in self.input_images:
+                input_mask_path = self.input_mask_dir / input_img.name
+                if input_mask_path.exists():
+                    pairs.append((input_img, input_mask_path))
+        else:  # Otherwise, include masks
+            # Pair images with the same name in input and trans directories
+            for input_img in self.input_images:
+                trans_img_path = self.trans_dir / input_img.name
+            
+                trans_mask_path = self.trans_mask_dir / input_img.name
+                if trans_img_path.exists()  and trans_mask_path.exists():
+                    pairs.append(( trans_img_path, trans_mask_path))
         return pairs
 
     def __getitem__(self, index):
-        input_img_path, trans_img_path = list(self.image_pairs.items())[index]
-        # Load images
-        input_image = nib.load(input_img_path).get_fdata()
-        trans_image = nib.load(trans_img_path).get_fdata()
+        # Depending on the mode, the pairs may have different numbers of elements
+        if self.mode == 'test':
+            input_img_path,input_mask_path = self.image_pairs[index]
+            # Load images
 
-        data_dict = {'input': input_image, 'trans': trans_image}
-        # Transform data if transforms are provided
+            input_image = nib.load(input_img_path).get_fdata()
+           
+            input_mask = nib.load(input_mask_path).get_fdata()
+
+            tolerance = 1e-3
+            input_mask_tolerated = (np.abs(input_mask - 1) < tolerance).astype(int)
+
+            
+            # Create the tolerated mask for input_mask using the same method
+    
+  
+
+            data_dict = {'input': input_image, 'input_mask_tolerated':input_mask_tolerated}
+
+
+        else:
+            trans_img_path,trans_mask_path = self.image_pairs[index]
+            # Load images
+
+            trans_image = nib.load(trans_img_path).get_fdata()
+           
+            trans_mask = nib.load(trans_mask_path).get_fdata()
+
+            tolerance = 1e-3
+            trans_mask_tolerated = (np.abs(trans_mask - 1) < tolerance).astype(int)
+
+            
+            # Create the tolerated mask for input_mask using the same method
+    
+  
+
+            data_dict = {'input': trans_image, 'input_mask_tolerated':trans_mask_tolerated}
+
+
+
+         
         if self.transforms:
             data_dict = self.transforms(data_dict)
 
