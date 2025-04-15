@@ -42,14 +42,16 @@ def main(args):
     if args.model_name == 'unet':
         image_level_cond = False
     elif args.model_name == 'diffusion':
-        image_level_cond = False
+        image_level_cond = True
     else:
         raise Exception("Model name does exit")
 
     logger.configure(Path(experiment_name) / "score_train",
                      format_strs=["log", "stdout", "csv", "tensorboard"])
+    contrast_hist = args.contrast_hist
+    noncontrast_hist = args.noncontrast_hist
     diffusion = create_gaussian_diffusion(config, timestep_respacing=False)
-    model = create_score_model(config, image_level_cond)
+    model = create_score_model(config, image_level_cond,contrast_hist or noncontrast_hist  )
     
 
     pytorch_total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -62,6 +64,7 @@ def main(args):
 
     input = args.input
     trans = args.trans
+    
 
     filter_train = args.filter_train
     filter_val = args.filter_val
@@ -115,6 +118,8 @@ if __name__ == "__main__":
     parser.add_argument("--model_name", help="translated model: unet or diffusion", type=str, default='diffusion')
     parser.add_argument("--filter_train", help="a npy to filter data based on pixel difference and mask difference", type=str, default=None)
     parser.add_argument("--filter_val", help="a npy to filter data based on pixel difference and mask difference", type=str, default=None)
+    parser.add_argument("--contrast_hist", help="a npy to filter data based on pixel difference and mask difference", action="store_true")
+    parser.add_argument("--noncontrast_hist", help="a npy to filter data based on pixel difference and mask difference", action="store_true")
     args = parser.parse_args()
     main(args)
 
