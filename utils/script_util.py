@@ -5,7 +5,7 @@ from models import unet , factorizedunet
 from models.respace import SpacedDiffusion, space_timesteps
 
 
-def create_score_model(config: ml_collections.ConfigDict, image_level_cond):
+def create_score_model(config: ml_collections.ConfigDict, image_level_cond, hist=False):
     return unet.UNetModel(
         in_channels=config.score_model.num_input_channels,
         model_channels=config.score_model.num_channels,
@@ -24,6 +24,7 @@ def create_score_model(config: ml_collections.ConfigDict, image_level_cond):
         use_scale_shift_norm=config.score_model.use_scale_shift_norm,
         resblock_updown=config.score_model.resblock_updown,
         image_level_cond=image_level_cond,
+        hist = hist
     )
 
 def create_score_model_mask(config: ml_collections.ConfigDict, image_level_cond):

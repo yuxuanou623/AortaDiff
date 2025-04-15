@@ -186,6 +186,7 @@ class ResBlock(TimestepBlock):
         else:
             self.h_upd = self.x_upd = nn.Identity()
 
+        print("emb_channels",emb_channels)
         self.emb_layers = nn.Sequential(
             nn.SiLU(),
             linear(
@@ -367,6 +368,7 @@ class UNetModel(nn.Module):
         use_scale_shift_norm=False,
         resblock_updown=False,
         image_level_cond: bool = False,
+        hist: bool = False,
     ):
         super().__init__()
 
@@ -389,6 +391,10 @@ class UNetModel(nn.Module):
         self.image_level_cond = image_level_cond
 
         time_embed_dim = model_channels * 4
+        if hist: 
+            time_hist_embed_dim = time_embed_dim+32
+        else:
+            time_hist_embed_dim = time_embed_dim
         # encoder_channels = time_embed_dim
         encoder_channels = None
 
@@ -410,7 +416,7 @@ class UNetModel(nn.Module):
                 layers = [
                     ResBlock(
                         ch,
-                        time_embed_dim,
+                        time_hist_embed_dim,
                         dropout,
                         out_channels=int(mult * model_channels),
                         dims=dims,
@@ -438,7 +444,7 @@ class UNetModel(nn.Module):
                     TimestepEmbedSequential(
                         ResBlock(
                             ch,
-                            time_embed_dim,
+                            time_hist_embed_dim,
                             dropout,
                             out_channels=out_ch,
                             dims=dims,
@@ -458,7 +464,7 @@ class UNetModel(nn.Module):
         self.middle_block = TimestepEmbedSequential(
             ResBlock(
                 ch,
-                time_embed_dim,
+                time_hist_embed_dim,
                 dropout,
                 dims=dims,
                 use_checkpoint=use_checkpoint,
@@ -473,7 +479,7 @@ class UNetModel(nn.Module):
             ),
             ResBlock(
                 ch,
-                time_embed_dim,
+                time_hist_embed_dim,
                 dropout,
                 dims=dims,
                 use_checkpoint=use_checkpoint,
@@ -489,7 +495,7 @@ class UNetModel(nn.Module):
                 layers = [
                     ResBlock(
                         ch + ich,
-                        time_embed_dim,
+                        time_hist_embed_dim,
                         dropout,
                         out_channels=int(model_channels * mult),
                         dims=dims,
@@ -513,7 +519,7 @@ class UNetModel(nn.Module):
                     layers.append(
                         ResBlock(
                             ch,
-                            time_embed_dim,
+                            time_hist_embed_dim,
                             dropout,
                             out_channels=out_ch,
                             dims=dims,
@@ -553,7 +559,7 @@ class UNetModel(nn.Module):
         self.middle_block.apply(convert_module_to_f32)
         self.output_blocks.apply(convert_module_to_f32)
 
-    def forward(self, x, timesteps=None, conditioning_x=None):
+    def forward(self, x, timesteps, hist=None, conditioning_x=None):
         """
         Apply the model to an input batch.
 
@@ -563,13 +569,20 @@ class UNetModel(nn.Module):
         :return: an [N x C x ...] Tensor of outputs.
         """
         if (conditioning_x is not None) and self.image_level_cond:
+            # print("here")
             x = th.cat([x, conditioning_x], dim=1)
 
         hs = []
         h = x.type(self.dtype)
+        
 
         if timesteps is not None:
             emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
+           
+            if hist is not None:
+                emb =  th.cat((emb , hist), dim=-1)
+         
+          
 
             for module in self.input_blocks:
                 h = module(h, emb)

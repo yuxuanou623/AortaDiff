@@ -15,6 +15,7 @@ from PIL import Image
 import numpy as np
 from torch.utils.data import Dataset
 import os
+import torch
 from pathlib import Path
 
 def load_image(image_path):
@@ -77,9 +78,9 @@ def get_oxaaa_base_transform_abnormalty_test(image_size):
 def get_oxaaa_base_transform_abnormalty_train(image_size):
     base_transform = [
         transforms.AddChanneld(
-            keys=['input',  'input_mask_tolerated']),
+            keys=['input',  'input_mask_tolerated', 'input_contrast']),
         transforms.Resized(
-            keys=['input'],
+            keys=['input', 'input_contrast'],
             spatial_size=(image_size, image_size)),
         transforms.Resized(
             keys=['input_mask_tolerated'],
@@ -105,7 +106,7 @@ def get_oxaaa_train_transform_abnormalty_train(image_size):
     base_transform = get_oxaaa_base_transform_abnormalty_train(image_size)
     data_aug = [
         transforms.EnsureTyped(
-            keys=['input', 'input_mask_tolerated']),
+            keys=['input', 'input_mask_tolerated', 'input_contrast', 'trans_hist', 'input_hist']),
     ]
     return transforms.Compose(base_transform + data_aug)
 
@@ -326,19 +327,27 @@ class OxAAADataset(Dataset):
     def _cache_pairs(self):
         pairs = []
         if self.mode == 'test':  # If mode is 'test', don't include the masks
-            # Pair images in test mode (no masks)
-            for input_img in self.input_images:
-                input_mask_path = self.input_mask_dir / input_img.name
-                if input_mask_path.exists():
-                    pairs.append((input_img, input_mask_path))
-        else:  # Otherwise, include masks
-            # Pair images with the same name in input and trans directories
+            # # Pair images in test mode (no masks)
+            # for input_img in self.input_images:
+            #     input_mask_path = self.input_mask_dir / input_img.name
+            #     if input_mask_path.exists():
+            #         pairs.append((input_img, input_mask_path))
             for input_img in self.input_images:
                 trans_img_path = self.trans_dir / input_img.name
             
                 trans_mask_path = self.trans_mask_dir / input_img.name
                 if trans_img_path.exists()  and trans_mask_path.exists():
                     pairs.append(( trans_img_path, trans_mask_path))
+
+        else:  # Otherwise, include masks
+            # Pair images with the same name in input and trans directories
+            for input_img in self.input_images:
+                trans_img_path = self.trans_dir / input_img.name
+               
+                input_mask_path = self.input_mask_dir / input_img.name
+                trans_mask_path = self.trans_mask_dir / input_img.name
+                if trans_img_path.exists()  and trans_mask_path.exists() and input_mask_path.exists():
+                    pairs.append(( trans_img_path, trans_mask_path, input_img, input_mask_path))
         return pairs
 
     def __getitem__(self, index):
@@ -353,6 +362,8 @@ class OxAAADataset(Dataset):
 
             tolerance = 1e-3
             input_mask_tolerated = (np.abs(input_mask - 1) < tolerance).astype(int)
+            # hist = torch.histc(input_image[input_mask_tolerated > 0], bins=16, min=-1, max=1) / input_mask_tolerated.sum()
+
 
             
             # Create the tolerated mask for input_mask using the same method
@@ -363,22 +374,74 @@ class OxAAADataset(Dataset):
 
 
         else:
-            trans_img_path,trans_mask_path = self.image_pairs[index]
+            trans_img_path,trans_mask_path , input_img_path, input_mask_path= self.image_pairs[index]
             # Load images
 
             trans_image = nib.load(trans_img_path).get_fdata()
            
             trans_mask = nib.load(trans_mask_path).get_fdata()
+            input_img = nib.load(input_img_path).get_fdata()
+            input_mask = nib.load(input_mask_path).get_fdata()
 
             tolerance = 1e-3
             trans_mask_tolerated = (np.abs(trans_mask - 1) < tolerance).astype(int)
+            input_mask_tolerated = (np.abs(input_mask - 1) < tolerance).astype(int)
+            input_contrast = input_mask_tolerated*input_img
+            masked_pixels = trans_image[trans_mask_tolerated > 0]
+            masked_tensor = torch.tensor(masked_pixels, dtype=torch.float32)  # Ensure it's float for histc
+
+            trans_hist = torch.histc(masked_tensor, bins=32, min=-1, max=1) / trans_mask_tolerated.sum()
+            masked_input = torch.tensor(input_img[input_mask_tolerated > 0], dtype=torch.float32)
+
+            # Convert denominator if needed
+            denominator = torch.tensor(input_mask_tolerated.sum()) if isinstance(input_mask_tolerated, np.ndarray) else input_mask_tolerated.sum()
+
+            # Compute histogram
+            input_hist = torch.histc(masked_input, bins=32, min=-1, max=1) / denominator
+
+
+            # import matplotlib.pyplot as plt
+        
+
+            # # Assuming input_hist and trans_hist are PyTorch tensors of shape [4, 32]
+            # # Convert them to NumPy arrays for plotting
+            # input_hist_np = input_hist.cpu().numpy()
+            # trans_hist_np = trans_hist.cpu().numpy()
+            # print("trans_hist_np",trans_hist_np.shape)
+            # print("input_hist_np",input_hist_np.shape)
+
+            # # Assuming input_hist_np and trans_hist_np are NumPy arrays of shape (32,)
+            # # Define the number of bins
+            # num_bins = input_hist_np.shape[0]
+
+            # # Create an array of bin centers
+            # bin_edges = np.linspace(-1, 1, num_bins + 1)  # Assuming the histogram range is [-1, 1]
+            # bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+
+            # # Create the plot
+            # plt.figure(figsize=(10, 6))
+            # plt.plot(bin_centers, input_hist_np, label='Input Histogram', color='blue', marker='o')
+            # plt.plot(bin_centers, trans_hist_np, label='Transformed Histogram', color='orange', marker='x')
+            # plt.title('Comparison of Input and Transformed Histograms')
+            # plt.xlabel('Intensity Bin Center')
+            # plt.ylabel('Normalized Frequency')
+            # plt.legend()
+            # plt.grid(True)
+            # plt.tight_layout()
+
+            # # Save the figure as a PNG file
+            # plt.savefig('histogram_comparison.png')
+            # plt.close()
+            # import sys
+            # sys.exit()
+
 
             
             # Create the tolerated mask for input_mask using the same method
     
   
 
-            data_dict = {'input': trans_image, 'input_mask_tolerated':trans_mask_tolerated}
+            data_dict = {'input': trans_image, 'input_mask_tolerated':trans_mask_tolerated, 'input_contrast':input_contrast, 'trans_hist':trans_hist,'input_hist':input_hist }
 
 
 

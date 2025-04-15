@@ -168,6 +168,10 @@ class TrainLoop:
             self.batch_masks = data_dict.pop("input_mask_tolerated")
             self.batch_masks = self.batch_masks.to(self.device)
 
+            self.noncon_arota = data_dict.pop("input_contrast").to(self.device)
+            self.noncon_arota_hist = data_dict.pop("trans_hist").to(self.device)
+            self.con_arota_hist = data_dict.pop("input_hist").to(self.device)
+
             # self.batch_image_seg = self.batch_image_seg.to(self.device)  # seg
             # self.brain_mask = self.brain_mask.to(self.device)
             self.model_conditionals = data_dict
@@ -190,10 +194,13 @@ class TrainLoop:
         compute_losses = functools.partial(
             self.diffusion.training_losses,
             model=self.model,
-            input_img=self.batch_image_input,
+            input_img=self.noncon_arota,
             trans_img=self.batch_image_input,
             aneurysm_mask = self.batch_masks,
-            aneurysm_square=self.batch_masks,
+            noncon_arota_hist=self.noncon_arota_hist,
+            con_arota_hist=self.con_arota_hist,
+            have_noncon_arota_hist = self.args.noncontrast_hist,
+            have_con_arota_hist = self.args.contrast_hist,
             model_name = self.args.model_name,
             t=self.t,
             iteration=iteration,

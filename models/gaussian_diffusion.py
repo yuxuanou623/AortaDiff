@@ -20,6 +20,84 @@ from utils import logger
 import torch.nn.functional as F
 import torch.nn as nn
 
+def _check_times(times, t_0, t_T):
+    assert times[0] > times[1], (times[0], times[1])
+    assert times[-1] == -1, times[-1]
+    for t_last, t_cur in zip(times[:-1], times[1:]):
+        assert abs(t_last - t_cur) == 1, (t_last, t_cur)
+    for t in times:
+        assert t >= t_0, (t, t_0)
+        assert t <= t_T, (t, t_T)
+
+def get_schedule_jump(t_T, n_sample, jump_length, jump_n_sample,
+                      jump2_length=1, jump2_n_sample=1,
+                      jump3_length=1, jump3_n_sample=1,
+                      start_resampling=100000000):
+    jumps = {}
+    for j in range(0, t_T - jump_length, jump_length):
+        jumps[j] = jump_n_sample - 1
+    jumps2 = {}
+    for j in range(0, t_T - jump2_length, jump2_length):
+        jumps2[j] = jump2_n_sample - 1
+    jumps3 = {}
+    for j in range(0, t_T - jump3_length, jump3_length):
+        jumps3[j] = jump3_n_sample - 1
+    t = t_T
+    ts = []
+    while t >= 1:
+        t = t-1
+        ts.append(t)
+        if (
+            t + 1 < t_T - 1 and
+            t <= start_resampling
+        ):
+            for _ in range(n_sample - 1):
+                t = t + 1
+                ts.append(t)
+
+                if t >= 0:
+                    t = t - 1
+                    ts.append(t)
+        if (
+            jumps3.get(t, 0) > 0 and
+            t <= start_resampling - jump3_length
+        ):
+            jumps3[t] = jumps3[t] - 1
+            for _ in range(jump3_length):
+                t = t + 1
+                ts.append(t)
+        if (
+            jumps2.get(t, 0) > 0 and
+            t <= start_resampling - jump2_length
+        ):
+            jumps2[t] = jumps2[t] - 1
+            for _ in range(jump2_length):
+                t = t + 1
+                ts.append(t)
+            jumps3 = {}
+            for j in range(0, t_T - jump3_length, jump3_length):
+                jumps3[j] = jump3_n_sample - 1
+        if (
+            jumps.get(t, 0) > 0 and
+            t <= start_resampling - jump_length
+        ):
+            jumps[t] = jumps[t] - 1
+            for _ in range(jump_length):
+                t = t + 1
+                ts.append(t)
+            jumps2 = {}
+            for j in range(0, t_T - jump2_length, jump2_length):
+                jumps2[j] = jump2_n_sample - 1
+
+            jumps3 = {}
+            for j in range(0, t_T - jump3_length, jump3_length):
+                jumps3[j] = jump3_n_sample - 1
+    ts.append(-1)
+    _check_times(ts, -1, t_T)
+
+    return ts
+
+
 def normalize(img):
     _min = img.min()
     _max = img.max()
@@ -303,7 +381,8 @@ class GaussianDiffusion:
         B, C = x.shape[:2]
         assert t.shape == (B,)
         # x=torch.zeros(x.shape).cuda()
-        x_in = th.cat((x, cond), 1)
+        # x_in = th.cat((x, cond), 1)
+        x_in = x
 
         model_output = model(x_in, self._scale_timesteps(t), **model_kwargs)
         # model_output = model(x_in, **model_kwargs)
@@ -449,6 +528,7 @@ class GaussianDiffusion:
             model,
             x,
             cond,
+            mask,
             t,
             clip_denoised=True,
             cond_fn=None,
@@ -467,7 +547,15 @@ class GaussianDiffusion:
                  - 'sample': a random sample from the model.
                  - 'pred_xstart': a prediction of x_0.
         """
+        noise = th.randn_like(cond)
+        weighed_gt = self.q_sample(cond, noise, self._scale_timesteps(t))
 
+        mask = mask.to(dtype=th.int)
+    
+        x = (mask * (x)+(1-mask) * (weighed_gt))
+        
+
+        
         out = self.p_mean_variance(
             model,
             x,
@@ -485,14 +573,14 @@ class GaussianDiffusion:
                 cond_fn, out, x, t, model_kwargs=model_kwargs
             )
         sample = out["mean"] + nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise
-        return {"sample": sample, "pred_xstart": out["pred_xstart"], "model_output": out["model_output"]}
+        return {"sample": sample, "pred_xstart": out["pred_xstart"], "model_output": out["model_output"], "mask": mask, "weightedgt": weighed_gt, "x": x}
 
     def p_sample_loop(
             self,
             model_forward,
             model_backward,
             test_data_input,
-            num_batch,
+            test_data_seg,
             shape,
             model_name=None,
             clip_denoised=True,
@@ -520,13 +608,13 @@ class GaussianDiffusion:
         :param progress: if True, show a tqdm progress bar.
         :return: a non-differentiable batch of samples.
         """
-        final = None
+        final = []
       
         for sample in self.p_sample_loop_progressive(
                 model_forward,
                 model_backward,
                 test_data_input,
-                num_batch,
+                test_data_seg,
                 shape,
                 model_name=model_name,
                 clip_denoised=clip_denoised,
@@ -548,7 +636,7 @@ class GaussianDiffusion:
             model_forward,
             model_backward,
             test_data_input,
-            num_batch,
+            test_data_seg,
             shape,
             model_name=None,
             clip_denoised=True,
@@ -571,6 +659,8 @@ class GaussianDiffusion:
             device = next(model_forward.parameters()).device
         assert isinstance(shape, (tuple, list))
 
+        idx_wall = -1
+
 
         if model_name == 'diffusion':
             indices = list(range(self.num_timesteps))[::-1]
@@ -582,38 +672,56 @@ class GaussianDiffusion:
             img_forward = noise.cuda()
 
             masks_all = []
+            if True:
+                times = get_schedule_jump(self.num_timesteps, 1, 10, 2)
+                time_pairs = list(zip(times[:-1], times[1:]))
 
-            for i_forward in indices:
-                t_forward = th.tensor([i_forward] * shape[0], device=device)
-                with th.no_grad():
-                    noise1 = th.randn(shape, device=device)
+            if True:
+                from tqdm.auto import tqdm
+                time_pairs = tqdm(time_pairs)
+            for t_last, t_cur in time_pairs:
+                print(t_last, t_cur)
+                idx_wall += 1
+                t_last_t = t_last
+                if t_cur < t_last: 
+                    t_forward = th.tensor([t_last_t] * shape[0], device=device)
+                    with th.no_grad():
+                        print("t_forward",t_last_t)
+                      
+                        
 
-                    cond_forward =  test_data_input
+                        cond_forward =  test_data_input
 
+                        
                     
-                   
-                    if ddim == 'False':
-                
-                        out_forward = self.p_sample(
-                            model_forward,
-                            img_forward,
-                            cond_forward,
-                            t_forward,
-                            clip_denoised=clip_denoised,
-                            model_kwargs=model_kwargs,
-                        )
-                    else:
-                        out_forward = self.ddim_sample(
-                            model_forward,
-                            img_forward,
-                            cond_forward,
-                            t_forward,
-                            clip_denoised=clip_denoised,
-                            model_kwargs=model_kwargs,
-                            eta=eta,
-                        )
+                        if ddim == 'False':
+                            
+                    
+                            out_forward = self.p_sample(
+                                model_forward,
+                                img_forward,
+                                cond_forward,
+                                test_data_seg,
+                                t_forward,
+                                clip_denoised=clip_denoised,
+                                model_kwargs=model_kwargs,
+                            )
+                        else:
+                            out_forward = self.ddim_sample(
+                                model_forward,
+                                img_forward,
+                                cond_forward,
+                                t_forward,
+                                clip_denoised=clip_denoised,
+                                model_kwargs=model_kwargs,
+                                eta=eta,
+                            )
              
                     prev_img_forward = out_forward["sample"]
+                    if th.all(t_forward == 0):
+                        prev_img_forward = out_forward["sample"]*test_data_seg + cond_forward*(1-test_data_seg)
+
+
                   
                     
 
@@ -621,13 +729,19 @@ class GaussianDiffusion:
 
                     
     
-                x_yield = prev_img_forward
-                img_forward = prev_img_forward
+                    x_yield = [prev_img_forward, out_forward["mask"], out_forward["weightedgt"], out_forward["x"]]
+                    img_forward = prev_img_forward
 
                 
 
 
-            yield x_yield
+                    yield x_yield
+
+                else:
+                    t_shift = 1
+                    prev_img_forward = self.undo(
+                        prev_img_forward,
+                        t=t_last_t+t_shift)
         elif model_name == 'unet':
             with th.no_grad():
                 x0_pred_forward = model_forward(test_data_input, **model_kwargs)
@@ -635,6 +749,16 @@ class GaussianDiffusion:
 
                 yield x0_pred_backward
 
+    def undo(self, img_after_model, t):
+        t = th.tensor([t], device=img_after_model.device)
+        return self._undo(img_after_model, t)
+
+    def _undo(self, img_out, t):
+        beta = _extract_into_tensor(self.betas, t, img_out.shape)
+        img_in_est = th.sqrt(1 - beta) * img_out + \
+                    th.sqrt(beta) * th.randn_like(img_out)
+        return img_in_est
+    
     def ddim_sample(
             self,
             model,
@@ -692,7 +816,7 @@ class GaussianDiffusion:
 
 
 
-    def training_losses(self,  model, input_img, trans_img, aneurysm_mask,aneurysm_square,model_name, t,iteration, x_start_t=None, model_kwargs=None, noise=None):
+    def training_losses(self,  model, input_img, trans_img, aneurysm_mask,noncon_arota_hist,con_arota_hist,have_con_arota_hist,have_noncon_arota_hist,model_name, t,iteration, x_start_t=None, model_kwargs=None, noise=None):
         """
         Compute training losses for a single timestep.
 
@@ -717,7 +841,7 @@ class GaussianDiffusion:
             # input_img = (input_img / 255.0) * 2 - 1
             x_t = self.q_sample(trans_img, noise, self._scale_timesteps(t))
            
-          
+            hist = None
 
             
             
@@ -725,8 +849,19 @@ class GaussianDiffusion:
             
             
            
+            # if model_kwargs.use_con_arota_hist:
+            if have_con_arota_hist:
+               
+                hist = con_arota_hist
+             
+            elif have_noncon_arota_hist:
+                hist = noncon_arota_hist
+            cond = input_img
+            x_t_input = th.cat((x_t, cond), 1)
+          
+
             # x_start_pred, masks, mask_logits = model(x_t_input, self._scale_timesteps(t), **model_kwargs)
-            x_start_pred= model(x_t, self._scale_timesteps(t), **model_kwargs)
+            x_start_pred= model(x=x_t_input, timesteps = self._scale_timesteps(t),hist = hist, **model_kwargs)
             # mask_logits = model(x_t_input, self._scale_timesteps(t), **model_kwargs)
         elif model_name == 'unet':
             x_t_input = input_img
@@ -825,7 +960,7 @@ class GaussianDiffusion:
             wandb.log({
         "MaskedImage": wandb.Image(aneurysm_mask[max_index, :, :, :].squeeze(0).detach().cpu().numpy()*x_start_pred[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
         "MaskedTarget": wandb.Image(aneurysm_mask[max_index, :, :, :].squeeze(0).detach().cpu().numpy()*target[max_index, :, :, :].squeeze(0).detach().cpu().numpy()), 
-         "Image": wandb.Image(x_start_pred[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
+        "Image": wandb.Image(x_start_pred[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
         "Target": wandb.Image(target[max_index, :, :, :].squeeze(0).detach().cpu().numpy())},  step=iteration)
        
 
