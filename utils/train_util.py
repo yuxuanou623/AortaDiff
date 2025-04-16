@@ -159,16 +159,12 @@ class TrainLoop:
     def forward_backward(self, data_dict, iteration, phase: str = "train"):
 
         if self.recursive_flag == 0:
-            self.batch_image_input = data_dict.pop(self.main_data_indentifier_input)
+            self.contrast = data_dict.pop("contrast").to(self.device)
+            self.contrast_mask_tolerated = data_dict.pop("contrast_mask_tolerated").to(self.device)
+            self.noncontrast_mask_tolerated = data_dict.pop("noncontrast_mask_tolerated").to(self.device)
+           
 
-            # self.batch_image_seg = data_dict.pop('seg')
-            # self.brain_mask = th.ones(self.batch_image_seg.shape) * (data_dict.pop('brainmask') > 0)
-
-            self.batch_image_input = self.batch_image_input.to(self.device)  # t1
-            self.batch_masks = data_dict.pop("input_mask_tolerated")
-            self.batch_masks = self.batch_masks.to(self.device)
-
-            self.noncon_arota = data_dict.pop("input_contrast").to(self.device)
+            self.noncon_arota = data_dict.pop("noncon_arota").to(self.device)
             self.noncon_arota_hist = data_dict.pop("trans_hist").to(self.device)
             self.con_arota_hist = data_dict.pop("input_hist").to(self.device)
 
@@ -186,7 +182,7 @@ class TrainLoop:
         self.mp_trainer.zero_grad()
 
 
-        self.t, self.weights = self.schedule_sampler.sample(self.batch_image_input.shape[0], self.device)
+        self.t, self.weights = self.schedule_sampler.sample(self.noncon_arota.shape[0], self.device)
 
         x0_t = None
         labels = None
@@ -195,12 +191,15 @@ class TrainLoop:
             self.diffusion.training_losses,
             model=self.model,
             input_img=self.noncon_arota,
-            trans_img=self.batch_image_input,
-            aneurysm_mask = self.batch_masks,
+            trans_img=self.contrast,
+            aneurysm_mask_contrast = self.contrast_mask_tolerated,
+            aneurysm_mask_noncontrast = self.noncontrast_mask_tolerated,
             noncon_arota_hist=self.noncon_arota_hist,
             con_arota_hist=self.con_arota_hist,
             have_noncon_arota_hist = self.args.noncontrast_hist,
             have_con_arota_hist = self.args.contrast_hist,
+            cond_on_noncontrast_mask = self.args.cond_on_noncontrast_mask,
+            cond_on_contrast_mask = self.args.cond_on_contrast_mask,
             model_name = self.args.model_name,
             t=self.t,
             iteration=iteration,

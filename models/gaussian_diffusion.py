@@ -816,7 +816,7 @@ class GaussianDiffusion:
 
 
 
-    def training_losses(self,  model, input_img, trans_img, aneurysm_mask,noncon_arota_hist,con_arota_hist,have_con_arota_hist,have_noncon_arota_hist,model_name, t,iteration, x_start_t=None, model_kwargs=None, noise=None):
+    def training_losses(self,  model, input_img, trans_img, aneurysm_mask_contrast,aneurysm_mask_noncontrast,noncon_arota_hist,con_arota_hist,have_con_arota_hist,have_noncon_arota_hist,cond_on_noncontrast_mask, cond_on_contrast_mask,model_name, t,iteration, x_start_t=None, model_kwargs=None, noise=None):
         """
         Compute training losses for a single timestep.
 
@@ -856,7 +856,12 @@ class GaussianDiffusion:
              
             elif have_noncon_arota_hist:
                 hist = noncon_arota_hist
-            cond = input_img
+            if cond_on_noncontrast_mask:
+                cond = aneurysm_mask_noncontrast
+            elif cond_on_contrast_mask:
+                cond = aneurysm_mask_contrast
+            else:
+                cond = input_img
             x_t_input = th.cat((x_t, cond), 1)
           
 
@@ -878,7 +883,7 @@ class GaussianDiffusion:
     #     loss = masks[:, 0, :, :] * (target - x_start_pred) ** 2 + \
     #    masks[:, 1, :, :] * (input_img - x_start_pred) ** 2 
         loss = (target - x_start_pred) ** 2
-        loss = aneurysm_mask*loss
+        loss = aneurysm_mask_contrast*loss
         
         # terms["loss"] = mean_flat(loss) + masks_penalty
         
@@ -958,10 +963,11 @@ class GaussianDiffusion:
             # Log the image to W&B
         if iteration % 200 ==0:
             wandb.log({
-        "MaskedImage": wandb.Image(aneurysm_mask[max_index, :, :, :].squeeze(0).detach().cpu().numpy()*x_start_pred[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
-        "MaskedTarget": wandb.Image(aneurysm_mask[max_index, :, :, :].squeeze(0).detach().cpu().numpy()*target[max_index, :, :, :].squeeze(0).detach().cpu().numpy()), 
+        "MaskedImage": wandb.Image(aneurysm_mask_contrast[max_index, :, :, :].squeeze(0).detach().cpu().numpy()*x_start_pred[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
+        "MaskedTarget": wandb.Image(aneurysm_mask_contrast[max_index, :, :, :].squeeze(0).detach().cpu().numpy()*target[max_index, :, :, :].squeeze(0).detach().cpu().numpy()), 
         "Image": wandb.Image(x_start_pred[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
-        "Target": wandb.Image(target[max_index, :, :, :].squeeze(0).detach().cpu().numpy())},  step=iteration)
+        "Target": wandb.Image(target[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
+        "arota_noncontrast": wandb.Image(input_img[max_index, :, :, :].squeeze(0).detach().cpu().numpy())},  step=iteration)
        
 
         return terms

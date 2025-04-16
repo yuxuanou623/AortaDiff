@@ -38,32 +38,14 @@ def load_image_grey(image_path):
     
     return img_array
 
+# data_dict = {'contrast': trans_image, 'contrast_mask_tolerated':trans_mask_tolerated, 'noncon_arota':input_contrast, 'trans_hist':trans_hist,'input_hist':input_hist , 'noncontrast_mask_tolerated': input_mask_tolerated}
 
-def get_brats2021_train_transform_abnormalty_train(image_size):
-    base_transform = get_brats2021_base_transform_abnormalty_train(image_size)
-    data_aug = [
-        transforms.EnsureTyped(
-            keys=['input', 'trans', 'brainmask', 'seg']),
-    ]
-    return transforms.Compose(base_transform + data_aug)
-
-def get_brats2021_base_transform_abnormalty_train(image_size):
-
-    base_transform = [
-        transforms.AddChanneld(
-            keys=['input', 'trans', 'brainmask', 'seg']),
-        transforms.Resized(
-            keys=['input', 'trans', 'brainmask', 'seg'],
-            spatial_size=(image_size, image_size)),
-    ]
-
-    return base_transform
 
 def get_oxaaa_base_transform_abnormalty_test(image_size):
 
     base_transform = [
         transforms.AddChanneld(
-            keys=['input',  'input_mask_tolerated']),
+            keys=['contrast',  'contrast_mask_tolerated','noncon_arota', 'noncontrast_mask_tolerated']),
         transforms.Resized(
             keys=['input'],
             spatial_size=(image_size, image_size)),
@@ -78,12 +60,12 @@ def get_oxaaa_base_transform_abnormalty_test(image_size):
 def get_oxaaa_base_transform_abnormalty_train(image_size):
     base_transform = [
         transforms.AddChanneld(
-            keys=['input',  'input_mask_tolerated', 'input_contrast']),
+            keys=['contrast',  'contrast_mask_tolerated','noncon_arota', 'noncontrast_mask_tolerated']),
         transforms.Resized(
-            keys=['input', 'input_contrast'],
+            keys=['contrast', 'noncon_arota'],
             spatial_size=(image_size, image_size)),
         transforms.Resized(
-            keys=['input_mask_tolerated'],
+            keys=['contrast_mask_tolerated','noncontrast_mask_tolerated'],
             spatial_size=(image_size, image_size),
             mode='nearest')
        
@@ -106,7 +88,7 @@ def get_oxaaa_train_transform_abnormalty_train(image_size):
     base_transform = get_oxaaa_base_transform_abnormalty_train(image_size)
     data_aug = [
         transforms.EnsureTyped(
-            keys=['input', 'input_mask_tolerated', 'input_contrast', 'trans_hist', 'input_hist']),
+            keys=['contrast', 'contrast_mask_tolerated', 'noncon_arota', 'trans_hist', 'input_hist', 'noncontrast_mask_tolerated']),
     ]
     return transforms.Compose(base_transform + data_aug)
 
@@ -441,7 +423,7 @@ class OxAAADataset(Dataset):
     
   
 
-            data_dict = {'input': trans_image, 'input_mask_tolerated':trans_mask_tolerated, 'input_contrast':input_contrast, 'trans_hist':trans_hist,'input_hist':input_hist }
+            data_dict = {'contrast': trans_image, 'contrast_mask_tolerated':trans_mask_tolerated, 'noncon_arota':input_contrast, 'trans_hist':trans_hist,'input_hist':input_hist , 'noncontrast_mask_tolerated': input_mask_tolerated}
 
 
 
