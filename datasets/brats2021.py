@@ -39,18 +39,18 @@ def load_image_grey(image_path):
     return img_array
 
 # data_dict = {'contrast': trans_image, 'contrast_mask_tolerated':trans_mask_tolerated, 'noncon_arota':input_contrast, 'trans_hist':trans_hist,'input_hist':input_hist , 'noncontrast_mask_tolerated': input_mask_tolerated}
-
+#{ 'trans_hist':trans_hist,'input_hist':input_hist , 'noncontrast_mask_tolerated': input_mask_tolerated, 'noncon_arota':input_contrast, 'input_img':input_img}
 
 def get_oxaaa_base_transform_abnormalty_test(image_size):
 
     base_transform = [
         transforms.AddChanneld(
-            keys=['contrast',  'contrast_mask_tolerated','noncon_arota', 'noncontrast_mask_tolerated']),
+            keys=['input_img','noncon_arota', 'noncontrast_mask_tolerated', 'trans_image','contrast_mask_tolerated']),
         transforms.Resized(
-            keys=['input'],
+            keys=['noncon_arota', 'input_img', 'trans_image'],
             spatial_size=(image_size, image_size)),
         transforms.Resized(
-            keys=['input_mask_tolerated'],
+            keys=['noncontrast_mask_tolerated','contrast_mask_tolerated'],
             spatial_size=(image_size, image_size),
             mode='nearest')
        
@@ -74,13 +74,11 @@ def get_oxaaa_base_transform_abnormalty_train(image_size):
     return base_transform
 
 
-
-
 def get_oxaaa_train_transform_abnormalty_test(image_size):
     base_transform = get_oxaaa_base_transform_abnormalty_test(image_size)
     data_aug = [
         transforms.EnsureTyped(
-            keys=['input', 'input_mask_tolerated']),
+            keys=['trans_hist', 'input_hist', 'noncontrast_mask_tolerated', 'noncon_arota', 'input_img','trans_image', 'contrast_mask_tolerated']),
     ]
     return transforms.Compose(base_transform + data_aug)
 
@@ -315,11 +313,12 @@ class OxAAADataset(Dataset):
             #     if input_mask_path.exists():
             #         pairs.append((input_img, input_mask_path))
             for input_img in self.input_images:
+                input_mask_path = self.input_mask_dir / input_img.name
                 trans_img_path = self.trans_dir / input_img.name
-            
                 trans_mask_path = self.trans_mask_dir / input_img.name
-                if trans_img_path.exists()  and trans_mask_path.exists():
-                    pairs.append(( trans_img_path, trans_mask_path))
+               
+                if  input_mask_path.exists() and trans_img_path.exists() and trans_mask_path.exists():
+                    pairs.append(( input_img, input_mask_path, trans_img_path, trans_mask_path))
 
         else:  # Otherwise, include masks
             # Pair images with the same name in input and trans directories
@@ -335,24 +334,38 @@ class OxAAADataset(Dataset):
     def __getitem__(self, index):
         # Depending on the mode, the pairs may have different numbers of elements
         if self.mode == 'test':
-            input_img_path,input_mask_path = self.image_pairs[index]
+            input_img_path, input_mask_path, trans_img_path,trans_mask_path = self.image_pairs[index]
             # Load images
 
-            input_image = nib.load(input_img_path).get_fdata()
+            trans_image = nib.load(trans_img_path).get_fdata()
            
+            trans_mask = nib.load(trans_mask_path).get_fdata()
+            input_img = nib.load(input_img_path).get_fdata()
             input_mask = nib.load(input_mask_path).get_fdata()
 
             tolerance = 1e-3
+            trans_mask_tolerated = (np.abs(trans_mask - 1) < tolerance).astype(int)
             input_mask_tolerated = (np.abs(input_mask - 1) < tolerance).astype(int)
-            # hist = torch.histc(input_image[input_mask_tolerated > 0], bins=16, min=-1, max=1) / input_mask_tolerated.sum()
+            input_contrast = input_mask_tolerated*input_img
+            trans_contrast = trans_mask_tolerated*trans_image
+            input_background = (1 - input_mask_tolerated)*input_img
+            masked_pixels = trans_image[trans_mask_tolerated > 0]
+            masked_tensor = torch.tensor(masked_pixels, dtype=torch.float32)  # Ensure it's float for histc
 
+            trans_hist = torch.histc(masked_tensor, bins=32, min=-1, max=1) / trans_mask_tolerated.sum()
+            masked_input = torch.tensor(input_img[input_mask_tolerated > 0], dtype=torch.float32)
 
-            
-            # Create the tolerated mask for input_mask using the same method
+            # Convert denominator if needed
+            denominator = torch.tensor(input_mask_tolerated.sum()) if isinstance(input_mask_tolerated, np.ndarray) else input_mask_tolerated.sum()
+
+            # Compute histogram
+            input_hist = torch.histc(masked_input, bins=32, min=-1, max=1) / denominator
+
     
   
 
-            data_dict = {'input': input_image, 'input_mask_tolerated':input_mask_tolerated}
+            data_dict = { 'trans_hist':trans_hist,'input_hist':input_hist , 'noncontrast_mask_tolerated': input_mask_tolerated, 'noncon_arota':input_contrast, 'input_img':input_img, 'trans_image': trans_image, 'contrast_mask_tolerated': trans_mask_tolerated}
+
 
 
         else:
@@ -561,7 +574,7 @@ class OxAAADataset(Dataset):
 
 # # Fetch a single batch (let's assume we define batch size as the number of pairs in one directory)
 # batch_size = len(dataset._cache_pairs())
-# batch_data = [dataset[i] for i in range(2)]
+# batch_data = [dataset[i] for i in range(2)condrecontructcontrast]
 
 # # Extract input and trans images' data for analysis
 # input_images = np.array([data['input'].flatten() for data in batch_data])

@@ -250,7 +250,11 @@ class TrainLoop:
         def save_checkpoint(params):
             state_dict = self.mp_trainer.master_params_to_state_dict(params)
             logger.log(f"saving model ...")
-            filename = f"model{(self.step):06d}.pt"
+            if self.args.continue_training:
+
+                filename = f"model{(int(self.args.continue_step)+self.step):06d}.pt"
+            else:
+                filename = f"model{(self.step):06d}.pt"
             with bf.BlobFile(bf.join(get_blob_logdir(), filename), "wb") as f:
                 th.save(state_dict, f)
 

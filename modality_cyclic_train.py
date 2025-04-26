@@ -5,7 +5,7 @@ import time
 import sys
 import argparse
 import os
-
+import blobfile as bf
 from pathlib import Path
 import torch as th
 
@@ -52,7 +52,20 @@ def main(args):
     noncontrast_hist = args.noncontrast_hist
     diffusion = create_gaussian_diffusion(config, timestep_respacing=False)
     model = create_score_model(config, image_level_cond,contrast_hist or noncontrast_hist  )
+
+    if args.continue_training:
+
+        filename = args.modelfilename
     
+
+        with bf.BlobFile(bf.join(logger.get_dir(), filename), "rb") as f:
+            
+            
+            model.load_state_dict(
+                th.load(f.name, map_location=th.device('cuda'))
+            )
+        model.to(th.device('cuda'))
+        
 
     pytorch_total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
@@ -122,6 +135,11 @@ if __name__ == "__main__":
     parser.add_argument("--noncontrast_hist", help="a npy to filter data based on pixel difference and mask difference", action="store_true")
     parser.add_argument("--cond_on_noncontrast_mask", help="a npy to filter data based on pixel difference and mask difference", action="store_true")
     parser.add_argument("--cond_on_contrast_mask", help="a npy to filter data based on pixel difference and mask difference", action="store_true")
+    parser.add_argument("--continue_training", help="a npy to filter data based on pixel difference and mask difference", action="store_true")
+    parser.add_argument("--modelfilename", help="brats", type=str, default='model400000_cond_nonconarota_cond_nonconhist.pt')
+    parser.add_argument("--continue_step", help="brats", type=str, default='400000')
+    
+
     args = parser.parse_args()
     main(args)
 

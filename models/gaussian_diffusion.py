@@ -356,7 +356,7 @@ class GaussianDiffusion:
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
 
     def p_mean_variance(
-            self, model, x, t, cond=None, clip_denoised=True, model_kwargs=None
+            self, model, x, t, cond=None, cond_hist = None, clip_denoised=True, model_kwargs=None
     ):
         """
         Apply the model to get p(x_{t-1} | x_t), as well as a prediction of
@@ -381,10 +381,8 @@ class GaussianDiffusion:
         B, C = x.shape[:2]
         assert t.shape == (B,)
         # x=torch.zeros(x.shape).cuda()
-        # x_in = th.cat((x, cond), 1)
-        x_in = x
-
-        model_output = model(x_in, self._scale_timesteps(t), **model_kwargs)
+        x_in = th.cat((x, cond), 1)
+        model_output = model(x=x_in, timesteps = self._scale_timesteps(t),hist = cond_hist, **model_kwargs)
         # model_output = model(x_in, **model_kwargs)
         # model_output = model(x, self._scale_timesteps(t), **model_kwargs)
 
@@ -529,6 +527,8 @@ class GaussianDiffusion:
             x,
             cond,
             mask,
+            noncon_img,
+            cond_hist,
             t,
             clip_denoised=True,
             cond_fn=None,
@@ -547,8 +547,8 @@ class GaussianDiffusion:
                  - 'sample': a random sample from the model.
                  - 'pred_xstart': a prediction of x_0.
         """
-        noise = th.randn_like(cond)
-        weighed_gt = self.q_sample(cond, noise, self._scale_timesteps(t))
+        noise = th.randn_like(noncon_img)
+        weighed_gt = self.q_sample(noncon_img, noise, self._scale_timesteps(t))
 
         mask = mask.to(dtype=th.int)
     
@@ -561,6 +561,7 @@ class GaussianDiffusion:
             x,
             t,
             cond,
+            cond_hist,
             clip_denoised=clip_denoised,
             model_kwargs=model_kwargs,
         )
@@ -581,6 +582,8 @@ class GaussianDiffusion:
             model_backward,
             test_data_input,
             test_data_seg,
+            cond_hist,
+            cond,
             shape,
             model_name=None,
             clip_denoised=True,
@@ -615,6 +618,8 @@ class GaussianDiffusion:
                 model_backward,
                 test_data_input,
                 test_data_seg,
+                cond_hist,
+                cond,
                 shape,
                 model_name=model_name,
                 clip_denoised=clip_denoised,
@@ -637,6 +642,8 @@ class GaussianDiffusion:
             model_backward,
             test_data_input,
             test_data_seg,
+            cond_hist,
+            cond,
             shape,
             model_name=None,
             clip_denoised=True,
@@ -690,7 +697,9 @@ class GaussianDiffusion:
                       
                         
 
-                        cond_forward =  test_data_input
+                        cond_forward =  cond
+                        noncon_img = test_data_input
+                        cond_hist = cond_hist
 
                         
                     
@@ -702,6 +711,8 @@ class GaussianDiffusion:
                                 img_forward,
                                 cond_forward,
                                 test_data_seg,
+                                noncon_img,
+                                cond_hist,
                                 t_forward,
                                 clip_denoised=clip_denoised,
                                 model_kwargs=model_kwargs,
@@ -719,16 +730,9 @@ class GaussianDiffusion:
              
                     prev_img_forward = out_forward["sample"]
                     if th.all(t_forward == 0):
-                        prev_img_forward = out_forward["sample"]*test_data_seg + cond_forward*(1-test_data_seg)
+                        prev_img_forward = out_forward["sample"]*test_data_seg + noncon_img*(1-test_data_seg)
 
-
-                  
-                    
-
-                    
-
-                    
-    
+   
                     x_yield = [prev_img_forward, out_forward["mask"], out_forward["weightedgt"], out_forward["x"]]
                     img_forward = prev_img_forward
 
