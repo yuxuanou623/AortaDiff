@@ -167,6 +167,8 @@ class TrainLoop:
             self.noncon_arota = data_dict.pop("noncon_arota").to(self.device)
             self.noncon_arota_hist = data_dict.pop("trans_hist").to(self.device)
             self.con_arota_hist = data_dict.pop("input_hist").to(self.device)
+            self.square_mask = data_dict.pop("square_mask").to(self.device)
+            self.lumen_mask = data_dict.pop("trans_lumen_mask_tolerated").to(self.device)
 
             # self.batch_image_seg = self.batch_image_seg.to(self.device)  # seg
             # self.brain_mask = self.brain_mask.to(self.device)
@@ -200,6 +202,8 @@ class TrainLoop:
             have_con_arota_hist = self.args.contrast_hist,
             cond_on_noncontrast_mask = self.args.cond_on_noncontrast_mask,
             cond_on_contrast_mask = self.args.cond_on_contrast_mask,
+            square_mask = self.square_mask,
+            lumen_mask = self.lumen_mask,
             model_name = self.args.model_name,
             t=self.t,
             iteration=iteration,

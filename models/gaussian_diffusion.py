@@ -19,6 +19,7 @@ import blobfile as bf
 from utils import logger
 import torch.nn.functional as F
 import torch.nn as nn
+import lpips
 
 def _check_times(times, t_0, t_T):
     assert times[0] > times[1], (times[0], times[1])
@@ -820,7 +821,7 @@ class GaussianDiffusion:
 
 
 
-    def training_losses(self,  model, input_img, trans_img, aneurysm_mask_contrast,aneurysm_mask_noncontrast,noncon_arota_hist,con_arota_hist,have_con_arota_hist,have_noncon_arota_hist,cond_on_noncontrast_mask, cond_on_contrast_mask,model_name, t,iteration, x_start_t=None, model_kwargs=None, noise=None):
+    def training_losses(self,  model, input_img, trans_img, aneurysm_mask_contrast,aneurysm_mask_noncontrast,noncon_arota_hist,con_arota_hist,have_con_arota_hist,have_noncon_arota_hist,cond_on_noncontrast_mask, cond_on_contrast_mask,square_mask, lumen_mask, model_name, t,iteration, x_start_t=None, model_kwargs=None, noise=None):
         """
         Compute training losses for a single timestep.
 
@@ -866,7 +867,7 @@ class GaussianDiffusion:
                 cond = aneurysm_mask_contrast
             else:
                 cond = input_img
-            x_t_input = th.cat((x_t, cond), 1)
+            x_t_input = th.cat((x_t, cond, lumen_mask), 1)
           
 
             # x_start_pred, masks, mask_logits = model(x_t_input, self._scale_timesteps(t), **model_kwargs)
@@ -886,8 +887,16 @@ class GaussianDiffusion:
         target = trans_img
     #     loss = masks[:, 0, :, :] * (target - x_start_pred) ** 2 + \
     #    masks[:, 1, :, :] * (input_img - x_start_pred) ** 2 
-        loss = (target - x_start_pred) ** 2
-        loss = aneurysm_mask_contrast*loss
+        
+
+        recontructed_image = x_start_pred*square_mask
+
+
+        recontructed_image_lpips = (recontructed_image).repeat(1,3,1,1)
+        trans_img_lpipis = (trans_img*square_mask).repeat(1,3,1,1)
+
+        lpips_model = lpips.LPIPS(pretrained=True, pnet_rand=False, net='squeeze', eval_mode=True, spatial=True, lpips=True).to('cuda') 
+        loss = lpips_model(recontructed_image_lpips, trans_img_lpipis)
         
         # terms["loss"] = mean_flat(loss) + masks_penalty
         

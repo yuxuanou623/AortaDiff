@@ -375,7 +375,7 @@ class UNetModel(nn.Module):
         if num_heads_upsample == -1:
             num_heads_upsample = num_heads
 
-        self.in_channels = in_channels if not image_level_cond else in_channels + 1
+        self.in_channels = in_channels if not image_level_cond else in_channels + 2
         self.model_channels = model_channels
         self.out_channels = out_channels
         self.num_res_blocks = num_res_blocks

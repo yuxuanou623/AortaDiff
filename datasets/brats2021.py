@@ -45,12 +45,12 @@ def get_oxaaa_base_transform_abnormalty_test(image_size):
 
     base_transform = [
         transforms.AddChanneld(
-            keys=['input_img','noncon_arota', 'noncontrast_mask_tolerated', 'trans_image','contrast_mask_tolerated']),
+            keys=['input_img','noncon_arota', 'noncontrast_mask_tolerated', 'trans_image','contrast_mask_tolerated','trans_lumen_mask_tolerated']),
         transforms.Resized(
             keys=['noncon_arota', 'input_img', 'trans_image'],
             spatial_size=(image_size, image_size)),
         transforms.Resized(
-            keys=['noncontrast_mask_tolerated','contrast_mask_tolerated'],
+            keys=['noncontrast_mask_tolerated','contrast_mask_tolerated','trans_lumen_mask_tolerated'],
             spatial_size=(image_size, image_size),
             mode='nearest')
        
@@ -60,12 +60,12 @@ def get_oxaaa_base_transform_abnormalty_test(image_size):
 def get_oxaaa_base_transform_abnormalty_train(image_size):
     base_transform = [
         transforms.AddChanneld(
-            keys=['contrast',  'contrast_mask_tolerated','noncon_arota', 'noncontrast_mask_tolerated']),
+            keys=['contrast',  'contrast_mask_tolerated','noncon_arota', 'noncontrast_mask_tolerated','square_mask','trans_lumen_mask_tolerated']),
         transforms.Resized(
             keys=['contrast', 'noncon_arota'],
             spatial_size=(image_size, image_size)),
         transforms.Resized(
-            keys=['contrast_mask_tolerated','noncontrast_mask_tolerated'],
+            keys=['contrast_mask_tolerated','noncontrast_mask_tolerated','square_mask','trans_lumen_mask_tolerated'],
             spatial_size=(image_size, image_size),
             mode='nearest')
        
@@ -86,7 +86,7 @@ def get_oxaaa_train_transform_abnormalty_train(image_size):
     base_transform = get_oxaaa_base_transform_abnormalty_train(image_size)
     data_aug = [
         transforms.EnsureTyped(
-            keys=['contrast', 'contrast_mask_tolerated', 'noncon_arota', 'trans_hist', 'input_hist', 'noncontrast_mask_tolerated']),
+            keys=['contrast', 'contrast_mask_tolerated', 'noncon_arota', 'trans_hist', 'input_hist', 'noncontrast_mask_tolerated','square_mask','trans_lumen_mask_tolerated']),
     ]
     return transforms.Compose(base_transform + data_aug)
 
@@ -288,6 +288,7 @@ class OxAAADataset(Dataset):
 
         self.input_mask_dir = Path(self.data_root) / 'noncontrastmask'
         self.trans_mask_dir = Path(self.data_root) / 'contrastmask'
+        self.trans_lumenmask_dir = Path(self.data_root) / 'contrastlumenmask'
 
     
 
@@ -327,8 +328,9 @@ class OxAAADataset(Dataset):
                
                 input_mask_path = self.input_mask_dir / input_img.name
                 trans_mask_path = self.trans_mask_dir / input_img.name
-                if trans_img_path.exists()  and trans_mask_path.exists() and input_mask_path.exists():
-                    pairs.append(( trans_img_path, trans_mask_path, input_img, input_mask_path))
+                trans_lumen_mask_path = self.trans_lumenmask_dir / input_img.name
+                if trans_img_path.exists()  and trans_mask_path.exists() and input_mask_path.exists() and trans_lumen_mask_path.exists():
+                    pairs.append(( trans_img_path, trans_mask_path, input_img, input_mask_path, trans_lumen_mask_path))
         return pairs
 
     def __getitem__(self, index):
@@ -369,7 +371,7 @@ class OxAAADataset(Dataset):
 
 
         else:
-            trans_img_path,trans_mask_path , input_img_path, input_mask_path= self.image_pairs[index]
+            trans_img_path,trans_mask_path , input_img_path, input_mask_path, trans_lumen_mask_path= self.image_pairs[index]
             # Load images
 
             trans_image = nib.load(trans_img_path).get_fdata()
@@ -377,11 +379,32 @@ class OxAAADataset(Dataset):
             trans_mask = nib.load(trans_mask_path).get_fdata()
             input_img = nib.load(input_img_path).get_fdata()
             input_mask = nib.load(input_mask_path).get_fdata()
+            trans_lumen_mask = nib.load(trans_lumen_mask_path).get_fdata()
 
             tolerance = 1e-3
+            
+            
             trans_mask_tolerated = (np.abs(trans_mask - 1) < tolerance).astype(int)
             input_mask_tolerated = (np.abs(input_mask - 1) < tolerance).astype(int)
-            input_contrast = input_mask_tolerated*input_img
+            trans_lumen_mask_tolerated= (np.abs(trans_lumen_mask - 1) < tolerance).astype(int)
+            y, x = np.where(input_mask_tolerated == 1)
+            if len(x)==0:
+                print("input_mask_path",input_mask_path)
+
+            intersection_mask = np.logical_and(np.abs(input_mask - 1) < tolerance, np.abs(trans_mask - 1) < tolerance).astype(int)
+            margin = 10  # Define how much bigger the square should be
+            min_x = max(min(x) - margin, 0)
+            max_x = min(max(x) + margin + 1, intersection_mask.shape[1])
+            min_y = max(min(y) - margin, 0)
+            max_y = min(max(y) + margin + 1, intersection_mask.shape[0])
+
+            # Create a new mask with the square
+            square_mask = np.zeros_like(intersection_mask)
+            square_mask[min_y:max_y, min_x:max_x] = 1
+
+
+
+            input_contrast = input_img*square_mask
             masked_pixels = trans_image[trans_mask_tolerated > 0]
             masked_tensor = torch.tensor(masked_pixels, dtype=torch.float32)  # Ensure it's float for histc
 
@@ -436,7 +459,7 @@ class OxAAADataset(Dataset):
     
   
 
-            data_dict = {'contrast': trans_image, 'contrast_mask_tolerated':trans_mask_tolerated, 'noncon_arota':input_contrast, 'trans_hist':trans_hist,'input_hist':input_hist , 'noncontrast_mask_tolerated': input_mask_tolerated}
+            data_dict = {'contrast': trans_image, 'contrast_mask_tolerated':trans_mask_tolerated, 'noncon_arota':input_contrast, 'trans_hist':trans_hist,'input_hist':input_hist , 'noncontrast_mask_tolerated': input_mask_tolerated,'square_mask': square_mask, 'trans_lumen_mask_tolerated': trans_lumen_mask_tolerated}
 
 
 
