@@ -474,32 +474,7 @@ def main(args):
 
         # Assume sample_datach and test_data_conarota are already loaded numpy arrays
 
-        # Function to find the bounding box of nonzero elements
-        def find_bounding_box(img):
-            nonzero = np.argwhere(img != 0)
-            min_coords = nonzero.min(axis=0)
-            max_coords = nonzero.max(axis=0) + 1  # +1 because slice end is exclusive
-            return min_coords, max_coords
-
-        # Get bounding boxes for both images
-        min1, max1 = find_bounding_box(sample_datach)
-        min2, max2 = find_bounding_box(test_data_conarota)
-
-        # Find the combined bounding box
-        min_combined = np.minimum(min1, min2)
-        max_combined = np.maximum(max1, max2)
-
-        # Crop both images using the combined bounding box
-        def crop_image(img, min_coords, max_coords):
-            slices = tuple(slice(min_c, max_c) for min_c, max_c in zip(min_coords, max_coords))
-            return img[slices]
-
-        sample_datach_cropped = crop_image(sample_datach, min_combined, max_combined)
-        test_data_conarota_cropped = crop_image(test_data_conarota, min_combined, max_combined)
-
-        # Now sample_datach_cropped and test_data_conarota_cropped are aligned and cropped
-        print("Cropped shapes:", sample_datach_cropped.shape, test_data_conarota_cropped.shape)
-
+       
 
 
 
