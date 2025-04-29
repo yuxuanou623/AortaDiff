@@ -821,7 +821,7 @@ class GaussianDiffusion:
 
 
 
-    def training_losses(self,  model, input_img, trans_img, aneurysm_mask_contrast,aneurysm_mask_noncontrast,noncon_arota_hist,con_arota_hist,have_con_arota_hist,have_noncon_arota_hist,cond_on_noncontrast_mask, cond_on_contrast_mask,square_mask, lumen_mask, model_name, t,iteration, x_start_t=None, model_kwargs=None, noise=None):
+    def training_losses(self,  model, input_img, trans_img, aneurysm_mask_contrast,aneurysm_mask_noncontrast,noncon_arota_hist,con_arota_hist,have_con_arota_hist,have_noncon_arota_hist,cond_on_noncontrast_mask, cond_on_contrast_mask,square_mask, lumen_mask, cond_on_lumen_mask,model_name, t,iteration, x_start_t=None, model_kwargs=None, noise=None):
         """
         Compute training losses for a single timestep.
 
@@ -867,7 +867,11 @@ class GaussianDiffusion:
                 cond = aneurysm_mask_contrast
             else:
                 cond = input_img
-            x_t_input = th.cat((x_t, cond, lumen_mask), 1)
+            
+            if cond_on_lumen_mask:
+                x_t_input = th.cat((x_t, cond, lumen_mask), 1)
+            else:
+                x_t_input = th.cat((x_t, cond), 1)
           
 
             # x_start_pred, masks, mask_logits = model(x_t_input, self._scale_timesteps(t), **model_kwargs)

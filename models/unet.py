@@ -369,13 +369,26 @@ class UNetModel(nn.Module):
         resblock_updown=False,
         image_level_cond: bool = False,
         hist: bool = False,
+        lumenmask: bool = False
     ):
         super().__init__()
 
         if num_heads_upsample == -1:
             num_heads_upsample = num_heads
+        if not image_level_cond:
+            self.in_channels = in_channels
+        elif lumenmask:
+            self.in_channels =in_channels + 2
+        else:
+            self.in_channels =in_channels + 1
 
-        self.in_channels = in_channels if not image_level_cond else in_channels + 2
+
+      
+       
+
+
+
+    
         self.model_channels = model_channels
         self.out_channels = out_channels
         self.num_res_blocks = num_res_blocks

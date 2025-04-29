@@ -204,6 +204,7 @@ class TrainLoop:
             cond_on_contrast_mask = self.args.cond_on_contrast_mask,
             square_mask = self.square_mask,
             lumen_mask = self.lumen_mask,
+            cond_on_lumen_mask = self.args.cond_on_lumen_mask,
             model_name = self.args.model_name,
             t=self.t,
             iteration=iteration,

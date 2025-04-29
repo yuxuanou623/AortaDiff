@@ -51,7 +51,7 @@ def main(args):
     contrast_hist = args.contrast_hist
     noncontrast_hist = args.noncontrast_hist
     diffusion = create_gaussian_diffusion(config, timestep_respacing=False)
-    model = create_score_model(config, image_level_cond,contrast_hist or noncontrast_hist  )
+    model = create_score_model(config, image_level_cond,contrast_hist or noncontrast_hist , args.cond_on_lumen_mask )
 
     if args.continue_training:
 
@@ -138,6 +138,7 @@ if __name__ == "__main__":
     parser.add_argument("--continue_training", help="a npy to filter data based on pixel difference and mask difference", action="store_true")
     parser.add_argument("--modelfilename", help="brats", type=str, default='model400000_cond_nonconarota_cond_nonconhist.pt')
     parser.add_argument("--continue_step", help="brats", type=str, default='400000')
+    parser.add_argument("--cond_on_lumen_mask", help="brats",  action="store_true")
     
 
     args = parser.parse_args()
