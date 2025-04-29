@@ -984,7 +984,8 @@ class GaussianDiffusion:
         "MaskedTarget": wandb.Image(aneurysm_mask_contrast[max_index, :, :, :].squeeze(0).detach().cpu().numpy()*target[max_index, :, :, :].squeeze(0).detach().cpu().numpy()), 
         "Image": wandb.Image(x_start_pred[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
         "Target": wandb.Image(target[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
-        "arota_noncontrast": wandb.Image(input_img[max_index, :, :, :].squeeze(0).detach().cpu().numpy())},  step=iteration)
+        "arota_noncontrast": wandb.Image(input_img[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
+        "contrast_lumen": wandb.Image(lumen_mask[max_index, :, :, :].squeeze(0).detach().cpu().numpy())},  step=iteration)
        
 
         return terms

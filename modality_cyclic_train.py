@@ -139,6 +139,7 @@ if __name__ == "__main__":
     parser.add_argument("--modelfilename", help="brats", type=str, default='model400000_cond_nonconarota_cond_nonconhist.pt')
     parser.add_argument("--continue_step", help="brats", type=str, default='400000')
     parser.add_argument("--cond_on_lumen_mask", help="brats",  action="store_true")
+    parser.add_argument("--sdg_lumen_mask", help="brats",  action="store_true")
     
 
     args = parser.parse_args()

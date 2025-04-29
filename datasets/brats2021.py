@@ -17,6 +17,11 @@ from torch.utils.data import Dataset
 import os
 import torch
 from pathlib import Path
+import numpy as np
+import matplotlib.pyplot as plt
+
+from scipy.ndimage import distance_transform_edt
+from skimage.morphology import binary_erosion
 
 def load_image(image_path):
     with Image.open(image_path)as img:
@@ -60,9 +65,9 @@ def get_oxaaa_base_transform_abnormalty_test(image_size):
 def get_oxaaa_base_transform_abnormalty_train(image_size):
     base_transform = [
         transforms.AddChanneld(
-            keys=['contrast',  'contrast_mask_tolerated','noncon_arota', 'noncontrast_mask_tolerated','square_mask','trans_lumen_mask_tolerated']),
+            keys=['contrast',  'contrast_mask_tolerated','noncon_arota', 'noncontrast_mask_tolerated','square_mask','trans_lumen_mask_tolerated', 'm_sdf']),
         transforms.Resized(
-            keys=['contrast', 'noncon_arota'],
+            keys=['contrast', 'noncon_arota', 'm_sdf'],
             spatial_size=(image_size, image_size)),
         transforms.Resized(
             keys=['contrast_mask_tolerated','noncontrast_mask_tolerated','square_mask','trans_lumen_mask_tolerated'],
@@ -86,7 +91,7 @@ def get_oxaaa_train_transform_abnormalty_train(image_size):
     base_transform = get_oxaaa_base_transform_abnormalty_train(image_size)
     data_aug = [
         transforms.EnsureTyped(
-            keys=['contrast', 'contrast_mask_tolerated', 'noncon_arota', 'trans_hist', 'input_hist', 'noncontrast_mask_tolerated','square_mask','trans_lumen_mask_tolerated']),
+            keys=['contrast', 'contrast_mask_tolerated', 'noncon_arota', 'trans_hist', 'input_hist', 'noncontrast_mask_tolerated','square_mask','trans_lumen_mask_tolerated', 'm_sdf']),
     ]
     return transforms.Compose(base_transform + data_aug)
 
@@ -418,6 +423,18 @@ class OxAAADataset(Dataset):
             input_hist = torch.histc(masked_input, bins=32, min=-1, max=1) / denominator
 
 
+            lumen_bd = np.abs(binary_erosion(trans_lumen_mask_tolerated) - trans_lumen_mask_tolerated)
+            distance = distance_transform_edt(np.where(lumen_bd== 0., np.ones_like(lumen_bd), np.zeros_like(lumen_bd)))
+            m_sdf = np.where(trans_lumen_mask_tolerated == 1, distance * -1, distance)  # ensure signed DT
+
+            # Truncate at threshold and normalize between [-1, 1]
+            thresh = 15
+            m_sdf = np.clip(m_sdf, -thresh, thresh)  # a cleaner way
+            m_sdf /= thresh
+
+            
+
+
             # import matplotlib.pyplot as plt
         
 
@@ -459,7 +476,7 @@ class OxAAADataset(Dataset):
     
   
 
-            data_dict = {'contrast': trans_image, 'contrast_mask_tolerated':trans_mask_tolerated, 'noncon_arota':input_contrast, 'trans_hist':trans_hist,'input_hist':input_hist , 'noncontrast_mask_tolerated': input_mask_tolerated,'square_mask': square_mask, 'trans_lumen_mask_tolerated': trans_lumen_mask_tolerated}
+            data_dict = {'contrast': trans_image, 'contrast_mask_tolerated':trans_mask_tolerated, 'noncon_arota':input_contrast, 'trans_hist':trans_hist,'input_hist':input_hist , 'noncontrast_mask_tolerated': input_mask_tolerated,'square_mask': square_mask, 'trans_lumen_mask_tolerated': trans_lumen_mask_tolerated, 'm_sdf':m_sdf}
 
 
 
