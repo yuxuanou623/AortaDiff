@@ -22,7 +22,7 @@ sys.path.append(str(Path.cwd()))
 
 def main(args):
     use_gpus = args.gpu_id
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(use_gpus)
+    #os.environ["CUDA_VISIBLE_DEVICES"] = str(use_gpus)
     time_load_start = time.time()
     config = get_config.file_from_dataset(args.dataset)
     

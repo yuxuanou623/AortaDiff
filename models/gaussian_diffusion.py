@@ -357,7 +357,7 @@ class GaussianDiffusion:
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
 
     def p_mean_variance(
-            self, model, x, t, cond=None, cond_hist = None, clip_denoised=True, model_kwargs=None
+            self, model, x, t, cond=None, cond_hist = None, cond_on_lumen_mask = False, lumen_mask = None, clip_denoised=True, model_kwargs=None
     ):
         """
         Apply the model to get p(x_{t-1} | x_t), as well as a prediction of
@@ -382,7 +382,11 @@ class GaussianDiffusion:
         B, C = x.shape[:2]
         assert t.shape == (B,)
         # x=torch.zeros(x.shape).cuda()
-        x_in = th.cat((x, cond), 1)
+       
+        if cond_on_lumen_mask:
+            x_in = th.cat((x, cond, lumen_mask), 1)
+        else:
+            x_in = th.cat((x, cond), 1)
         model_output = model(x=x_in, timesteps = self._scale_timesteps(t),hist = cond_hist, **model_kwargs)
         # model_output = model(x_in, **model_kwargs)
         # model_output = model(x, self._scale_timesteps(t), **model_kwargs)
@@ -530,6 +534,8 @@ class GaussianDiffusion:
             mask,
             noncon_img,
             cond_hist,
+            cond_on_lumen_mask,
+            lumen_mask,
             t,
             clip_denoised=True,
             cond_fn=None,
@@ -563,6 +569,8 @@ class GaussianDiffusion:
             t,
             cond,
             cond_hist,
+            cond_on_lumen_mask,
+            lumen_mask,
             clip_denoised=clip_denoised,
             model_kwargs=model_kwargs,
         )
@@ -585,6 +593,8 @@ class GaussianDiffusion:
             test_data_seg,
             cond_hist,
             cond,
+            cond_on_lumen_mask,
+            lumen_mask,
             shape,
             model_name=None,
             clip_denoised=True,
@@ -621,6 +631,8 @@ class GaussianDiffusion:
                 test_data_seg,
                 cond_hist,
                 cond,
+                cond_on_lumen_mask,
+                lumen_mask,
                 shape,
                 model_name=model_name,
                 clip_denoised=clip_denoised,
@@ -645,6 +657,8 @@ class GaussianDiffusion:
             test_data_seg,
             cond_hist,
             cond,
+            cond_on_lumen_mask,
+            lumen_mask,
             shape,
             model_name=None,
             clip_denoised=True,
@@ -714,6 +728,8 @@ class GaussianDiffusion:
                                 test_data_seg,
                                 noncon_img,
                                 cond_hist,
+                                cond_on_lumen_mask,
+                                lumen_mask,
                                 t_forward,
                                 clip_denoised=clip_denoised,
                                 model_kwargs=model_kwargs,

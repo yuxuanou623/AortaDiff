@@ -50,12 +50,12 @@ def get_oxaaa_base_transform_abnormalty_test(image_size):
 
     base_transform = [
         transforms.AddChanneld(
-            keys=['input_img','noncon_arota', 'noncontrast_mask_tolerated', 'trans_image','contrast_mask_tolerated','trans_lumen_mask_tolerated']),
+            keys=['contrast',  'contrast_mask_tolerated','noncon_arota', 'noncontrast_mask_tolerated','square_mask','trans_lumen_mask_tolerated', 'm_sdf', 'input_img']),
         transforms.Resized(
-            keys=['noncon_arota', 'input_img', 'trans_image'],
+            keys=['contrast', 'noncon_arota', 'm_sdf', 'input_img'],
             spatial_size=(image_size, image_size)),
         transforms.Resized(
-            keys=['noncontrast_mask_tolerated','contrast_mask_tolerated','trans_lumen_mask_tolerated'],
+            keys=['contrast_mask_tolerated','noncontrast_mask_tolerated','square_mask','trans_lumen_mask_tolerated'],
             spatial_size=(image_size, image_size),
             mode='nearest')
        
@@ -83,7 +83,7 @@ def get_oxaaa_train_transform_abnormalty_test(image_size):
     base_transform = get_oxaaa_base_transform_abnormalty_test(image_size)
     data_aug = [
         transforms.EnsureTyped(
-            keys=['trans_hist', 'input_hist', 'noncontrast_mask_tolerated', 'noncon_arota', 'input_img','trans_image', 'contrast_mask_tolerated']),
+            keys=['contrast', 'contrast_mask_tolerated', 'noncon_arota', 'trans_hist', 'input_hist', 'noncontrast_mask_tolerated','square_mask','trans_lumen_mask_tolerated', 'm_sdf','input_img']),
     ]
     return transforms.Compose(base_transform + data_aug)
 
@@ -322,9 +322,10 @@ class OxAAADataset(Dataset):
                 input_mask_path = self.input_mask_dir / input_img.name
                 trans_img_path = self.trans_dir / input_img.name
                 trans_mask_path = self.trans_mask_dir / input_img.name
+                trans_lumen_mask_path = self.trans_lumenmask_dir / input_img.name
                
-                if  input_mask_path.exists() and trans_img_path.exists() and trans_mask_path.exists():
-                    pairs.append(( input_img, input_mask_path, trans_img_path, trans_mask_path))
+                if  input_mask_path.exists() and trans_img_path.exists() and trans_mask_path.exists() and trans_lumen_mask_path.exists():
+                    pairs.append(( trans_img_path, trans_mask_path, input_img, input_mask_path, trans_lumen_mask_path))
 
         else:  # Otherwise, include masks
             # Pair images with the same name in input and trans directories
@@ -341,7 +342,7 @@ class OxAAADataset(Dataset):
     def __getitem__(self, index):
         # Depending on the mode, the pairs may have different numbers of elements
         if self.mode == 'test':
-            input_img_path, input_mask_path, trans_img_path,trans_mask_path = self.image_pairs[index]
+            trans_img_path,trans_mask_path , input_img_path, input_mask_path, trans_lumen_mask_path= self.image_pairs[index]
             # Load images
 
             trans_image = nib.load(trans_img_path).get_fdata()
@@ -349,13 +350,32 @@ class OxAAADataset(Dataset):
             trans_mask = nib.load(trans_mask_path).get_fdata()
             input_img = nib.load(input_img_path).get_fdata()
             input_mask = nib.load(input_mask_path).get_fdata()
+            trans_lumen_mask = nib.load(trans_lumen_mask_path).get_fdata()
 
             tolerance = 1e-3
+            
+            
             trans_mask_tolerated = (np.abs(trans_mask - 1) < tolerance).astype(int)
             input_mask_tolerated = (np.abs(input_mask - 1) < tolerance).astype(int)
-            input_contrast = input_mask_tolerated*input_img
-            trans_contrast = trans_mask_tolerated*trans_image
-            input_background = (1 - input_mask_tolerated)*input_img
+            trans_lumen_mask_tolerated= (np.abs(trans_lumen_mask - 1) < tolerance).astype(int)
+            y, x = np.where(input_mask_tolerated == 1)
+            if len(x)==0:
+                print("input_mask_path",input_mask_path)
+
+            intersection_mask = np.logical_and(np.abs(input_mask - 1) < tolerance, np.abs(trans_mask - 1) < tolerance).astype(int)
+            margin = 10  # Define how much bigger the square should be
+            min_x = max(min(x) - margin, 0)
+            max_x = min(max(x) + margin + 1, intersection_mask.shape[1])
+            min_y = max(min(y) - margin, 0)
+            max_y = min(max(y) + margin + 1, intersection_mask.shape[0])
+
+            # Create a new mask with the square
+            square_mask = np.zeros_like(intersection_mask)
+            square_mask[min_y:max_y, min_x:max_x] = 1
+
+
+
+            input_contrast = input_img*square_mask
             masked_pixels = trans_image[trans_mask_tolerated > 0]
             masked_tensor = torch.tensor(masked_pixels, dtype=torch.float32)  # Ensure it's float for histc
 
@@ -368,10 +388,23 @@ class OxAAADataset(Dataset):
             # Compute histogram
             input_hist = torch.histc(masked_input, bins=32, min=-1, max=1) / denominator
 
+
+            lumen_bd = np.abs(binary_erosion(trans_lumen_mask_tolerated) - trans_lumen_mask_tolerated)
+            distance = distance_transform_edt(np.where(lumen_bd== 0., np.ones_like(lumen_bd), np.zeros_like(lumen_bd)))
+            m_sdf = np.where(trans_lumen_mask_tolerated == 1, distance * -1, distance)  # ensure signed DT
+
+            # Truncate at threshold and normalize between [-1, 1]
+            thresh = 15
+            m_sdf = np.clip(m_sdf, -thresh, thresh)  # a cleaner way
+            m_sdf /= thresh
+
+            
+
+
     
   
 
-            data_dict = { 'trans_hist':trans_hist,'input_hist':input_hist , 'noncontrast_mask_tolerated': input_mask_tolerated, 'noncon_arota':input_contrast, 'input_img':input_img, 'trans_image': trans_image, 'contrast_mask_tolerated': trans_mask_tolerated}
+            data_dict = {'contrast': trans_image, 'contrast_mask_tolerated':trans_mask_tolerated, 'noncon_arota':input_contrast, 'trans_hist':trans_hist,'input_hist':input_hist , 'noncontrast_mask_tolerated': input_mask_tolerated,'square_mask': square_mask, 'trans_lumen_mask_tolerated': trans_lumen_mask_tolerated, 'm_sdf':m_sdf, 'input_img': input_img}
 
 
 
@@ -435,44 +468,6 @@ class OxAAADataset(Dataset):
             
 
 
-            # import matplotlib.pyplot as plt
-        
-
-            # # Assuming input_hist and trans_hist are PyTorch tensors of shape [4, 32]
-            # # Convert them to NumPy arrays for plotting
-            # input_hist_np = input_hist.cpu().numpy()
-            # trans_hist_np = trans_hist.cpu().numpy()
-            # print("trans_hist_np",trans_hist_np.shape)
-            # print("input_hist_np",input_hist_np.shape)
-
-            # # Assuming input_hist_np and trans_hist_np are NumPy arrays of shape (32,)
-            # # Define the number of bins
-            # num_bins = input_hist_np.shape[0]
-
-            # # Create an array of bin centers
-            # bin_edges = np.linspace(-1, 1, num_bins + 1)  # Assuming the histogram range is [-1, 1]
-            # bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-
-            # # Create the plot
-            # plt.figure(figsize=(10, 6))
-            # plt.plot(bin_centers, input_hist_np, label='Input Histogram', color='blue', marker='o')
-            # plt.plot(bin_centers, trans_hist_np, label='Transformed Histogram', color='orange', marker='x')
-            # plt.title('Comparison of Input and Transformed Histograms')
-            # plt.xlabel('Intensity Bin Center')
-            # plt.ylabel('Normalized Frequency')
-            # plt.legend()
-            # plt.grid(True)
-            # plt.tight_layout()
-
-            # # Save the figure as a PNG file
-            # plt.savefig('histogram_comparison.png')
-            # plt.close()
-            # import sys
-            # sys.exit()
-
-
-            
-            # Create the tolerated mask for input_mask using the same method
     
   
 
@@ -488,154 +483,3 @@ class OxAAADataset(Dataset):
 
     def __len__(self):
         return len(self.image_pairs)
-
-# class OxAAADataset(Dataset):
-#     def __init__(self, data_root: str, mode: str, input_mod='noncon', trans_mod='con', transforms=None):
-#         super(OxAAADataset, self).__init__()
-#         assert mode in ['train', 'test'], 'Unknown mode'
-#         self.mode = mode
-#         self.data_root = data_root
-#         self.input_mod = input_mod  # Typically 'noncon'
-#         self.trans_mod = trans_mod  # Typically 'con'
-#         self.transforms = transforms
-        
-#         self.data_root =  Path(self.data_root) 
-       
-#         # Initialize directories for contrast and non-contrast images
-#         self.input_dir = Path(self.data_root) / 'noncontrast'
-#         self.trans_dir = Path(self.data_root) / 'contrast'
-
-#         print("self.input_dir", self.input_dir)
-#         print("self.trans_dir ", self.trans_dir )
-
-#         # List of all image names in the input directory
-#         self.input_images = sorted(self.input_dir.glob('*.nii.gz'))
-
-#         # Dictionary to quickly find corresponding images
-#         self.image_pairs = self._cache_pairs()
-
-#     def _cache_pairs(self):
-#         pairs = {}
-#         # Pair images with the same name in input and trans directories
-#         for input_img in self.input_images:
-#             trans_img_path = self.trans_dir / input_img.name
-#             if trans_img_path.exists():
-#                 pairs[input_img] = trans_img_path
-#         return pairs
-
-#     def __getitem__(self, index):
-#         input_img_path, trans_img_path = list(self.image_pairs.items())[index]
-#         # Load images
-#         input_image = nib.load(input_img_path).get_fdata()
-#         trans_image = nib.load(trans_img_path).get_fdata()
-
-#         data_dict = {'input': input_image, 'trans': trans_image}
-#         # print("input_image", input_image.shape)
-#         # print("trans_image", trans_image.shape)
-#         if isinstance(data_dict['input'], bytes) or isinstance(data_dict['trans'], bytes):
-#             print("input_img_path",input_img_path)
-#             print("trans_img_path",trans_img_path)
-#             raise ValueError("Image data is in bytes, expected a numerical array or tensor.")
-#         if self.transforms:
-#             data_dict = self.transforms(data_dict)
-
-#         return data_dict
-
-#     def __len__(self):
-#         return len(self.image_pairs)
-    
-# class OxAAADataset(Dataset):
-#     def __init__(self, data_root: str, mode: str, input_mod='noncon', trans_mod='con', transforms=None):
-#         super(OxAAADataset, self).__init__()
-#         assert mode in ['train', 'test'], 'Unknown mode'
-#         self.mode = mode
-#         self.data_root = data_root
-#         self.input_mod = input_mod  # Typically 'noncon'
-#         self.trans_mod = trans_mod  # Typically 'con'
-#         self.transforms = transforms
-        
-#         self.data_root =  Path(self.data_root) / self.mode
-       
-#         # Initialize directories for contrast and non-contrast images
-#         self.input_dir = Path(self.data_root) / 'noncon'
-#         self.trans_dir = Path(self.data_root) / 'con'
-
-#         print("self.input_dir", self.input_dir)
-#         print("self.trans_dir ", self.trans_dir )
-
-#         # List of all image names in the input directory
-#         self.input_images = sorted(self.input_dir.glob('*.png'))
-
-#         # Dictionary to quickly find corresponding images
-#         self.image_pairs = self._cache_pairs()
-
-#     def _cache_pairs(self):
-#         pairs = {}
-#         # Pair images with the same name in input and trans directories
-#         for input_img in self.input_images:
-#             trans_img_path = self.trans_dir / input_img.name
-#             if trans_img_path.exists():
-#                 pairs[input_img] = trans_img_path
-#         return pairs
-
-#     def __getitem__(self, index):
-#         input_img_path, trans_img_path = list(self.image_pairs.items())[index]
-#         # Load images
-#         input_image = load_image_grey(input_img_path)
-#         trans_image = load_image_grey(trans_img_path)
-
-#         data_dict = {'input': input_image, 'trans': trans_image}
-#         # print("input_image", input_image.shape)
-#         # print("trans_image", trans_image.shape)
-#         if isinstance(data_dict['input'], bytes) or isinstance(data_dict['trans'], bytes):
-#             print("input_img_path",input_img_path)
-#             print("trans_img_path",trans_img_path)
-#             raise ValueError("Image data is in bytes, expected a numerical array or tensor.")
-#         if self.transforms:
-#             data_dict = self.transforms(data_dict)
-
-#         return data_dict
-
-#     def __len__(self):
-#         return len(self.image_pairs)
-
-
-
-
-# import matplotlib.pyplot as plt
-
-
-# # Initialize the dataset
-# data_root = '/home/trin4156/Downloads/data'  # Replace with the actual path to your data
-# dataset = LDFDCTDataset(data_root=data_root, mode='train')
-# # Initialize the dataset
-# data_root = '/home/trin4156/Desktop/datasets/nnunet/nnunet_raw/Dataset102_nonconoxaaa2d/OxAAA'
-# dataset = OxAAADataset(data_root=data_root, mode='train', input_mod='noncon', trans_mod='con')
-
-# # Fetch a single batch (let's assume we define batch size as the number of pairs in one directory)
-# batch_size = len(dataset._cache_pairs())
-# batch_data = [dataset[i] for i in range(2)condrecontructcontrast]
-
-# # Extract input and trans images' data for analysis
-# input_images = np.array([data['input'].flatten() for data in batch_data])
-# trans_images = np.array([data['trans'].flatten() for data in batch_data])
-
-# # Plotting the data distribution
-# plt.figure(figsize=(12, 6))
-# plt.subplot(1, 2, 1)
-# plt.hist(input_images.flatten(), bins=50, color='blue', alpha=0.7)
-# plt.title('Input Images Pixel Distribution')
-# plt.xlabel('Pixel Intensity')
-# plt.ylabel('Frequency')
-
-# plt.subplot(1, 2, 2)
-# plt.hist(trans_images.flatten(), bins=50, color='green', alpha=0.7)
-# plt.title('Trans Images Pixel Distribution')
-# plt.xlabel('Pixel Intensity')
-# plt.ylabel('Frequency')
-
-# plt.tight_layout()
-# plt.show()
-# Example of creating a dataset with a filter
-# dataset = OxAAADataset(data_root='/mnt/data/data/OxAAA/train/normalized', mode='train', filter='/mnt/data/data/OxAAA/train/qualifying_filename.npy')
-

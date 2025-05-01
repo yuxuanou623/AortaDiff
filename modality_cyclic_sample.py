@@ -125,8 +125,7 @@ def save_images_and_calculate_metrics(img_pred_all, img_true_all, trans_all,  x_
             return image.astype(np.uint8)
         
         # Load LPIPS model (AlexNet or VGG)
-        lpips_model = lpips.LPIPS(net='alex')  # or 'vgg'
-        lpips_model = lpips_model.cuda() if torch.cuda.is_available() else lpips_model
+        lpips_model = lpips.LPIPS(pretrained=True, pnet_rand=False, net='squeeze', eval_mode=True, spatial=True, lpips=True).to('cuda') 
         pred = normalize_image(img_pred_all[i])
         print("img_pred_all",img_pred_all[i].max())
         print("img_pred_all",img_pred_all[i].min())
@@ -137,7 +136,7 @@ def save_images_and_calculate_metrics(img_pred_all, img_true_all, trans_all,  x_
         print("trans_all",trans_all[i].min())
         trans = normalize_image(trans_all[i])
         x = normalize_image(x_all[i])
-        def get_square_bounding_mask(mask1, mask2, min_size=90):
+        def get_square_bounding_mask(mask1, mask2):
             # Combine the masks (nonzero where either is nonzero)
             combined_mask = np.logical_or(mask1 != 0, mask2 != 0)
             
@@ -156,7 +155,7 @@ def save_images_and_calculate_metrics(img_pred_all, img_true_all, trans_all,  x_
             w = max_x - min_x
 
             # Make square bounding box of at least min_size
-            size = max(min_size, h, w)
+            size = max(h, w)
             center_y = (min_y + max_y) // 2
             center_x = (min_x + max_x) // 2
 
@@ -213,12 +212,9 @@ def save_images_and_calculate_metrics(img_pred_all, img_true_all, trans_all,  x_
         print("cropped_img1",cropped_img1.shape)
         print("cropped_img2",cropped_img2.shape)
 
-        real_arota = normalize_image(cropped_img1)
-        predicted_cropped = normalize_image(cropped_img2)
-        print("real_arota",real_arota.shape)
-        print("predicted_cropped",predicted_cropped.shape)
-        print("trans",trans.shape)
-        print("x", x.shape)
+        real_arota = cropped_img1.astype(np.uint8)
+        predicted_cropped = cropped_img2.astype(np.uint8)
+      
         
 
         # Calculate PSNR and SSIM
@@ -258,8 +254,8 @@ def save_images_and_calculate_metrics(img_pred_all, img_true_all, trans_all,  x_
         psnr_crop_values.append(psnr_crop)
         ssim_whole_values.append(ssim_whole)
         ssim_crop_values.append(ssim_crop)
-        lpips_whole_values.append(perceptual_dist_whole.item())
-        lpips_crop_values.append(perceptual_dist_crop.item())
+        lpips_whole_values.append(perceptual_dist_whole.mean().item())
+        lpips_crop_values.append(perceptual_dist_crop.mean().item())
         mse_whole_values.append(mse_whole)
         mse_crop_values.append(mse_crop)
 
@@ -339,7 +335,7 @@ def main(args):
     else:
         raise Exception("Model name does exit")
     diffusion = create_gaussian_diffusion(config, args.timestep_respacing)
-    model_forward = create_score_model(config, image_level_cond_forward, args.contrast_hist or args.noncontrast_hist )
+    model_forward = create_score_model(config, image_level_cond_forward, args.contrast_hist or args.noncontrast_hist, args.cond_on_lumen_mask )
     model_backward = create_score_model(config, image_level_cond_backward)
 
     filename = args.modelfilename
@@ -378,7 +374,7 @@ def main(args):
     num_batch = 0
     num_sample = 0
     
-    n=20
+    n=1
     img_true_all = np.zeros((n*(config.sampling.batch_size), config.score_model.num_input_channels, config.score_model.image_size,
              config.score_model.image_size))
     img_pred_all = np.zeros((n*(config.sampling.batch_size), config.score_model.num_input_channels, config.score_model.image_size,
@@ -420,7 +416,7 @@ def main(args):
             # test_data_input = test_data_dict[1].pop('input').cuda()
             test_data_input = test_data_dict.pop('input_img').cuda()
             # test_data_seg = test_data_dict[1].pop('trans')
-            test_data_gt = test_data_dict.pop('trans_image').cuda()
+            test_data_gt = test_data_dict.pop('contrast').cuda()
             test_data_seg = test_data_dict.pop('noncontrast_mask_tolerated').cuda()
 
             
@@ -428,6 +424,8 @@ def main(args):
             test_data_nonconhist = test_data_dict.pop('input_hist').cuda()
             test_data_arota = test_data_dict.pop('noncon_arota').cuda()
             test_data_conarota = test_data_dict.pop('contrast_mask_tolerated').numpy()
+            test_trans_lumen_mask_tolerated = test_data_dict.pop('trans_lumen_mask_tolerated').cuda()
+            test_m_sdf = test_data_dict.pop('m_sdf').cuda()
 
             cond_hist = None
             if args.contrast_hist:
@@ -439,6 +437,12 @@ def main(args):
                 cond = test_data_seg
             else:
                 cond = test_data_arota
+
+           
+            if args.sdg_lumen_mask: 
+                lumen = test_m_sdf
+            else:
+                lumen = test_trans_lumen_mask_tolerated
             
 
         sample_fn = (
@@ -450,7 +454,7 @@ def main(args):
         #                      patch_size=128, stride=128, batch_size=32 )
         
         sample = sample_fn(
-            model_forward, model_backward, test_data_input, test_data_seg,cond_hist, cond,
+            model_forward, model_backward, test_data_input, test_data_seg,cond_hist, cond,args.cond_on_lumen_mask,lumen,
             (test_data_seg.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
              config.score_model.image_size),
             model_name=args.model_name,
@@ -554,10 +558,12 @@ if __name__ == "__main__":
     parser.add_argument("--timestep_respacing", help="If you want to rescale timestep during sampling. enter the timestep you want to rescale the diffusion prcess to. If you do not wish to resale thetimestep, leave it blank or put 1000.", type=int,
                         default=1000)
     parser.add_argument("--modelfilename", help="brats", type=str, default='model400000_cond_nonconarota_cond_nonconhist.pt')
-    parser.add_argument("--filter", help="a npy to filter data based on pixel difference and mask difference", type=str, default='/mnt/data/data/OxAAA/test/normalized/nonzero_files.npy')
+    parser.add_argument("--filter", help="a npy to filter data based on pixel difference and mask difference", type=str, default='/mnt/data/data/OxAAA/test/normalized/test_file_with_lumen.npy')
     parser.add_argument("--contrast_hist", help="a npy to filter data based on pixel difference and mask difference", action="store_true")
     parser.add_argument("--noncontrast_hist", help="a npy to filter data based on pixel difference and mask difference", action="store_true")
     parser.add_argument("--cond_on_noncontrast_mask", help="a npy to filter data based on pixel difference and mask difference", action="store_true")
+    parser.add_argument("--cond_on_lumen_mask", help="brats",  action="store_true")
+    parser.add_argument("--sdg_lumen_mask", help="brats",  action="store_true")
 
     args = parser.parse_args()
     print(args.dataset)
