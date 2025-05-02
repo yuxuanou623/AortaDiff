@@ -374,7 +374,7 @@ def main(args):
     num_batch = 0
     num_sample = 0
     
-    n=1
+    n=20
     img_true_all = np.zeros((n*(config.sampling.batch_size), config.score_model.num_input_channels, config.score_model.image_size,
              config.score_model.image_size))
     img_pred_all = np.zeros((n*(config.sampling.batch_size), config.score_model.num_input_channels, config.score_model.image_size,
