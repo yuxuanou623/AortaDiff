@@ -837,7 +837,7 @@ class GaussianDiffusion:
 
 
 
-    def training_losses(self,  model, input_img, trans_img, aneurysm_mask_contrast,aneurysm_mask_noncontrast,noncon_arota_hist,con_arota_hist,have_con_arota_hist,have_noncon_arota_hist,cond_on_noncontrast_mask, cond_on_contrast_mask,square_mask, lumen_mask, cond_on_lumen_mask,model_name, t,iteration, x_start_t=None, model_kwargs=None, noise=None):
+    def training_losses(self,  model, input_img, trans_img, aneurysm_mask_contrast,aneurysm_mask_noncontrast,noncon_arota_hist,con_arota_hist,have_con_arota_hist,have_noncon_arota_hist,cond_on_noncontrast_mask, cond_on_contrast_mask,square_mask, lumen_mask, cond_on_lumen_mask,coarse_lumen_mask, model_name, t,iteration, x_start_t=None, model_kwargs=None, noise=None):
         """
         Compute training losses for a single timestep.
 
@@ -885,13 +885,13 @@ class GaussianDiffusion:
                 cond = input_img
             
             if cond_on_lumen_mask:
-                x_t_input = th.cat((x_t, cond, lumen_mask), 1)
+                x_t_input = th.cat((x_t, cond, coarse_lumen_mask), 1)
             else:
                 x_t_input = th.cat((x_t, cond), 1)
           
 
             # x_start_pred, masks, mask_logits = model(x_t_input, self._scale_timesteps(t), **model_kwargs)
-            x_start_pred= model(x=x_t_input, timesteps = self._scale_timesteps(t),hist = hist, **model_kwargs)
+            x_start_pred, updated_mask= model(x=x_t_input, timesteps = self._scale_timesteps(t),hist = hist, **model_kwargs)
             # mask_logits = model(x_t_input, self._scale_timesteps(t), **model_kwargs)
         elif model_name == 'unet':
             x_t_input = input_img
@@ -981,10 +981,26 @@ class GaussianDiffusion:
             :return: Reverse ReLU applied to y.
             """
             return th.relu(-y)  # Equivalent to max(-y, 0)
+        loss_func = nn.MSELoss(reduction='sum').to(x_t.device)
+        mask_loss = loss_func(updated_mask,lumen_mask)
+        def dice_score_from_sdf(sdf1, sdf2, eps=1e-5):
+            # Convert SDFs to binary masks: inside is where sdf <= 0
+            mask1 = (sdf1 <= 0).float()
+            mask2 = (sdf2 <= 0).float()
+            
+            intersection = (mask1 * mask2).sum()
+            union = mask1.sum() + mask2.sum()
+            
+            # Avoid division by zero
+            dice = (2.0 * intersection + eps) / (union + eps)
+            return dice
+        if iteration % 200 ==0:
+            dice_score = dice_score_from_sdf(updated_mask, lumen_mask)
 
         
         # terms["loss"] = -0.01*mask_logits.var(dim=1).mean() + mean_flat(loss) -0.05*check_empty_masks(mask_logits)  #mask5noncon2con_losss wandb colorful_fire
-        terms["loss"] = mean_flat(loss) 
+        terms["loss"] = mean_flat(loss) + mask_loss
+        
         
 
       
@@ -997,11 +1013,11 @@ class GaussianDiffusion:
         if iteration % 200 ==0:
             wandb.log({
         "MaskedImage": wandb.Image(aneurysm_mask_contrast[max_index, :, :, :].squeeze(0).detach().cpu().numpy()*x_start_pred[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
-        "MaskedTarget": wandb.Image(aneurysm_mask_contrast[max_index, :, :, :].squeeze(0).detach().cpu().numpy()*target[max_index, :, :, :].squeeze(0).detach().cpu().numpy()), 
         "Image": wandb.Image(x_start_pred[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
         "Target": wandb.Image(target[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
-        "arota_noncontrast": wandb.Image(input_img[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
-        "contrast_lumen": wandb.Image(lumen_mask[max_index, :, :, :].squeeze(0).detach().cpu().numpy())},  step=iteration)
+        "updatedmask": wandb.Image(updated_mask[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
+        "lumenmask": wandb.Image(lumen_mask[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),  
+        "dice":dice_score.item()},step=iteration)
        
 
         return terms

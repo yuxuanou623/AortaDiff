@@ -554,6 +554,19 @@ class UNetModel(nn.Module):
             nn.Identity(),
             zero_module(conv_nd(dims, input_ch, out_channels, 3, padding=1)),
         )
+
+        self.fcn = nn.Sequential(
+            # nn.Conv2d(4, 32, 3, padding=1),
+            # nn.ReLU(inplace=True),
+            nn.Conv2d(32, 32, 3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(32, 32, 3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(32, 32, 3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(32, 1, 1, 1, 0),
+            nn.Tanh()
+        )
         self.use_fp16 = use_fp16
 
     def convert_to_fp16(self):
@@ -615,5 +628,5 @@ class UNetModel(nn.Module):
                 h = module(h)
 
         h = h.type(x.dtype)
-        return self.out(h)
+        return self.out(h), self.fcn(h)
 

@@ -170,6 +170,7 @@ class TrainLoop:
             self.square_mask = data_dict.pop("square_mask").to(self.device)
             self.lumen_mask = data_dict.pop("trans_lumen_mask_tolerated").to(self.device)
 
+            self.coarse_m_sdf = data_dict.pop("coarse_m_sdf").to(self.device)
             self.m_sdf = data_dict.pop("m_sdf").to(self.device)
 
             if self.args.sdg_lumen_mask:
@@ -213,6 +214,7 @@ class TrainLoop:
             square_mask = self.square_mask,
             lumen_mask = cond_lumen,
             cond_on_lumen_mask = self.args.cond_on_lumen_mask,
+            coarse_lumen_mask = self.coarse_m_sdf,
             model_name = self.args.model_name,
             t=self.t,
             iteration=iteration,
