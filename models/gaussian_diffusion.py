@@ -981,7 +981,7 @@ class GaussianDiffusion:
             :return: Reverse ReLU applied to y.
             """
             return th.relu(-y)  # Equivalent to max(-y, 0)
-        loss_func = nn.MSELoss(reduction='sum').to(x_t.device)
+        loss_func = nn.MSELoss(reduction='mean').to(x_t.device)
         mask_loss = loss_func(updated_mask,lumen_mask)
         def dice_score_from_sdf(sdf1, sdf2, eps=1e-5):
             # Convert SDFs to binary masks: inside is where sdf <= 0
@@ -996,10 +996,14 @@ class GaussianDiffusion:
             return dice
         if iteration % 200 ==0:
             dice_score = dice_score_from_sdf(updated_mask, lumen_mask)
+           
 
         
         # terms["loss"] = -0.01*mask_logits.var(dim=1).mean() + mean_flat(loss) -0.05*check_empty_masks(mask_logits)  #mask5noncon2con_losss wandb colorful_fire
-        terms["loss"] = mean_flat(loss) + mask_loss
+        mean_flat_loss = mean_flat(loss)
+        terms["loss"] = mean_flat_loss + mask_loss
+       
+
         
         
 
@@ -1016,7 +1020,9 @@ class GaussianDiffusion:
         "Image": wandb.Image(x_start_pred[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
         "Target": wandb.Image(target[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
         "updatedmask": wandb.Image(updated_mask[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
-        "lumenmask": wandb.Image(lumen_mask[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),  
+        "lumenmask": wandb.Image(lumen_mask[max_index, :, :, :].squeeze(0).detach().cpu().numpy()), 
+        "lpips loss":mean_flat_loss.mean().item(),
+        "mask_loss":mask_loss.mean().item(),
         "dice":dice_score.item()},step=iteration)
        
 
