@@ -50,9 +50,9 @@ def get_oxaaa_base_transform_abnormalty_test(image_size):
 
     base_transform = [
         transforms.AddChanneld(
-            keys=['contrast',  'contrast_mask_tolerated','noncon_arota', 'noncontrast_mask_tolerated','square_mask','trans_lumen_mask_tolerated', 'm_sdf', 'input_img']),
+            keys=['contrast',  'contrast_mask_tolerated','noncon_arota', 'noncontrast_mask_tolerated','square_mask','trans_lumen_mask_tolerated', 'm_sdf', 'input_img', 'coarse_m_sdf']),
         transforms.Resized(
-            keys=['contrast', 'noncon_arota', 'm_sdf', 'input_img'],
+            keys=['contrast', 'noncon_arota', 'm_sdf', 'input_img', 'coarse_m_sdf'],
             spatial_size=(image_size, image_size)),
         transforms.Resized(
             keys=['contrast_mask_tolerated','noncontrast_mask_tolerated','square_mask','trans_lumen_mask_tolerated'],
@@ -83,7 +83,7 @@ def get_oxaaa_train_transform_abnormalty_test(image_size):
     base_transform = get_oxaaa_base_transform_abnormalty_test(image_size)
     data_aug = [
         transforms.EnsureTyped(
-            keys=['contrast', 'contrast_mask_tolerated', 'noncon_arota', 'trans_hist', 'input_hist', 'noncontrast_mask_tolerated','square_mask','trans_lumen_mask_tolerated', 'm_sdf','input_img']),
+            keys=['contrast', 'contrast_mask_tolerated', 'noncon_arota', 'trans_hist', 'input_hist', 'noncontrast_mask_tolerated','square_mask','trans_lumen_mask_tolerated', 'm_sdf','input_img', 'coarse_m_sdf']),
     ]
     return transforms.Compose(base_transform + data_aug)
 
@@ -324,9 +324,9 @@ class OxAAADataset(Dataset):
                 trans_img_path = self.trans_dir / input_img.name
                 trans_mask_path = self.trans_mask_dir / input_img.name
                 trans_lumen_mask_path = self.trans_lumenmask_dir / input_img.name
-               
+                coarse_mask_path = self.coarse_mask_dir / input_img.name
                 if  input_mask_path.exists() and trans_img_path.exists() and trans_mask_path.exists() and trans_lumen_mask_path.exists():
-                    pairs.append(( trans_img_path, trans_mask_path, input_img, input_mask_path, trans_lumen_mask_path))
+                    pairs.append(( trans_img_path, trans_mask_path, input_img, input_mask_path, trans_lumen_mask_path, coarse_mask_path))
 
         else:  # Otherwise, include masks
             # Pair images with the same name in input and trans directories

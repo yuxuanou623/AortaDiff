@@ -20,6 +20,9 @@ from utils import logger
 import torch.nn.functional as F
 import torch.nn as nn
 import lpips
+import torchvision.utils as vutils
+import torchvision.transforms.functional as TF
+from PIL import Image
 
 def _check_times(times, t_0, t_T):
     assert times[0] > times[1], (times[0], times[1])
@@ -357,7 +360,7 @@ class GaussianDiffusion:
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
 
     def p_mean_variance(
-            self, model, x, t, cond=None, cond_hist = None, cond_on_lumen_mask = False, lumen_mask = None, clip_denoised=True, model_kwargs=None
+            self, model, x, t, cond=None, cond_hist = None, cond_on_lumen_mask = False, lumen_mask = None, coarse_lumen_mask = None, clip_denoised=True, model_kwargs=None
     ):
         """
         Apply the model to get p(x_{t-1} | x_t), as well as a prediction of
@@ -384,10 +387,59 @@ class GaussianDiffusion:
         # x=torch.zeros(x.shape).cuda()
        
         if cond_on_lumen_mask:
-            x_in = th.cat((x, cond, lumen_mask), 1)
+            
+        
+            x_in = th.cat((x, cond, coarse_lumen_mask), 1)
         else:
             x_in = th.cat((x, cond), 1)
-        model_output = model(x=x_in, timesteps = self._scale_timesteps(t),hist = cond_hist, **model_kwargs)
+        model_output, updated_mask = model(x=x_in, timesteps = self._scale_timesteps(t),hist = cond_hist, **model_kwargs)
+        
+        
+        
+        updated_mask_1 = updated_mask[1, :, :, :].squeeze(0) 
+        # If it's a float tensor (e.g. in [0,1]), scale to [0,255]
+        if updated_mask_1.dtype == th.float32 or updated_mask_1.max() <= 1.0:
+            updated_mask_1 = (updated_mask_1 * 255).clamp(0, 255).byte()
+        else:
+            updated_mask_1 = updated_mask_1.byte()
+   
+
+        img_pil = TF.to_pil_image(updated_mask_1)
+        img_pil.save("slice_11.png")
+
+        updated_mask_1 = model_output[1, :, :, :].squeeze(0) 
+        # If it's a float tensor (e.g. in [0,1]), scale to [0,255]
+        if updated_mask_1.dtype == th.float32 or updated_mask_1.max() <= 1.0:
+            updated_mask_1 = (updated_mask_1 * 255).clamp(0, 255).byte()
+        else:
+            updated_mask_1 = updated_mask_1.byte()
+   
+
+        img_pil = TF.to_pil_image(updated_mask_1)
+        img_pil.save("slice_21.png")
+
+        updated_mask_1 = coarse_lumen_mask[1, :, :, :].squeeze(0) 
+        # If it's a float tensor (e.g. in [0,1]), scale to [0,255]
+        if updated_mask_1.dtype == th.float32 or updated_mask_1.max() <= 1.0:
+            updated_mask_1 = (updated_mask_1 * 255).clamp(0, 255).byte()
+        else:
+            updated_mask_1 = updated_mask_1.byte()
+   
+
+        img_pil = TF.to_pil_image(updated_mask_1)
+        img_pil.save("slice_01.png")
+
+        updated_mask_1 = lumen_mask[1, :, :, :].squeeze(0) 
+        # If it's a float tensor (e.g. in [0,1]), scale to [0,255]
+        if updated_mask_1.dtype == th.float32 or updated_mask_1.max() <= 1.0:
+            updated_mask_1 = (updated_mask_1 * 255).clamp(0, 255).byte()
+        else:
+            updated_mask_1 = updated_mask_1.byte()
+   
+
+        img_pil = TF.to_pil_image(updated_mask_1)
+        img_pil.save("slice_4.png")
+       
         # model_output = model(x_in, **model_kwargs)
         # model_output = model(x, self._scale_timesteps(t), **model_kwargs)
 
@@ -455,7 +507,8 @@ class GaussianDiffusion:
             "mean": model_mean,
             "variance": model_variance,
             "log_variance": model_log_variance,
-            "pred_xstart": pred_xstart
+            "pred_xstart": pred_xstart,
+            "coarse_mask":process_xstart(updated_mask)
         }
 
     def _predict_xstart_from_eps(self, x_t, t, eps):
@@ -536,6 +589,7 @@ class GaussianDiffusion:
             cond_hist,
             cond_on_lumen_mask,
             lumen_mask,
+            coarse_lumen_mask,
             t,
             clip_denoised=True,
             cond_fn=None,
@@ -571,6 +625,7 @@ class GaussianDiffusion:
             cond_hist,
             cond_on_lumen_mask,
             lumen_mask,
+            coarse_lumen_mask,
             clip_denoised=clip_denoised,
             model_kwargs=model_kwargs,
         )
@@ -583,7 +638,7 @@ class GaussianDiffusion:
                 cond_fn, out, x, t, model_kwargs=model_kwargs
             )
         sample = out["mean"] + nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise
-        return {"sample": sample, "pred_xstart": out["pred_xstart"], "model_output": out["model_output"], "mask": mask, "weightedgt": weighed_gt, "x": x}
+        return {"sample": sample, "pred_xstart": out["pred_xstart"], "model_output": out["model_output"], "mask": mask, "weightedgt": weighed_gt, "x": x, "coarse_mask": out["coarse_mask"]}
 
     def p_sample_loop(
             self,
@@ -595,6 +650,7 @@ class GaussianDiffusion:
             cond,
             cond_on_lumen_mask,
             lumen_mask,
+            test_coarse_m_sdf,
             shape,
             model_name=None,
             clip_denoised=True,
@@ -633,6 +689,7 @@ class GaussianDiffusion:
                 cond,
                 cond_on_lumen_mask,
                 lumen_mask,
+                test_coarse_m_sdf,
                 shape,
                 model_name=model_name,
                 clip_denoised=clip_denoised,
@@ -659,6 +716,7 @@ class GaussianDiffusion:
             cond,
             cond_on_lumen_mask,
             lumen_mask,
+            test_coarse_m_sdf,
             shape,
             model_name=None,
             clip_denoised=True,
@@ -692,6 +750,7 @@ class GaussianDiffusion:
             noise = th.randn(*shape, device=device)
             
             img_forward = noise.cuda()
+            mask_forward = test_coarse_m_sdf
 
             masks_all = []
             if True:
@@ -703,6 +762,13 @@ class GaussianDiffusion:
                 time_pairs = tqdm(time_pairs)
             for t_last, t_cur in time_pairs:
                 print(t_last, t_cur)
+
+                if t_last == 998:
+                    import sys
+                    sys.exit()
+
+                
+                
                 idx_wall += 1
                 t_last_t = t_last
                 if t_cur < t_last: 
@@ -730,6 +796,7 @@ class GaussianDiffusion:
                                 cond_hist,
                                 cond_on_lumen_mask,
                                 lumen_mask,
+                                mask_forward,
                                 t_forward,
                                 clip_denoised=clip_denoised,
                                 model_kwargs=model_kwargs,
@@ -746,12 +813,14 @@ class GaussianDiffusion:
                             )
              
                     prev_img_forward = out_forward["sample"]
+                    prev_mask_forward = out_forward["coarse_mask"]
                     if th.all(t_forward == 0):
                         prev_img_forward = out_forward["sample"]*test_data_seg + noncon_img*(1-test_data_seg)
 
    
-                    x_yield = [prev_img_forward, out_forward["mask"], out_forward["weightedgt"], out_forward["x"]]
+                    x_yield = [prev_img_forward, out_forward["mask"], out_forward["weightedgt"], out_forward["x"], prev_mask_forward]
                     img_forward = prev_img_forward
+                    mask_forward  = prev_mask_forward
 
                 
 

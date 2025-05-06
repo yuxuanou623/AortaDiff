@@ -45,7 +45,7 @@ def dice_score(pred, targs):
 
 
 
-def save_images_and_calculate_metrics(img_pred_all, img_true_all, trans_all,  x_all,contrast_arota_mask_all, noncontrast_arota_mask_all, output_folder, n):
+def save_images_and_calculate_metrics(img_pred_all, img_true_all, trans_all,  x_all,contrast_arota_mask_all, noncontrast_arota_mask_all, predicted_mask_all,test_gt_m_sdf, output_folder, n):
     """
     Saves the first `n` images from img_pred_all, img_true_all, and trans_all as a single PNG file with
     each image side by side, and calculates average PSNR and SSIM for pred vs true and pred vs trans.
@@ -79,7 +79,16 @@ def save_images_and_calculate_metrics(img_pred_all, img_true_all, trans_all,  x_
         contrast_arota_mask_all = contrast_arota_mask_all.cpu().numpy()
     if isinstance(noncontrast_arota_mask_all, torch.Tensor):
         noncontrast_arota_mask_all = noncontrast_arota_mask_all.cpu().numpy()
+    if isinstance(predicted_mask_all, torch.Tensor):
+        predicted_mask_all = predicted_mask_all.cpu().numpy()
+    if isinstance(test_gt_m_sdf, torch.Tensor):
+        test_gt_m_sdf = test_gt_m_sdf.cpu().numpy()
+    print("predicted_mask_all",predicted_mask_all)
 
+    print("Max pred:", np.max(predicted_mask_all))
+    print("Min pred:", np.min(predicted_mask_all))
+    print("Max gt:", np.max(test_gt_m_sdf))
+    print("Min gt:", np.min(test_gt_m_sdf))
     # Ensure `n` does not exceed available images
     n = min(n, img_pred_all.shape[0], img_true_all.shape[0], trans_all.shape[0])
 
@@ -91,6 +100,7 @@ def save_images_and_calculate_metrics(img_pred_all, img_true_all, trans_all,  x_
     lpips_crop_values = []
     mse_whole_values = []
     mse_crop_values = []
+    dice_values = []
 
     # Loop through the first `n` images
     for i in range(n):
@@ -124,6 +134,38 @@ def save_images_and_calculate_metrics(img_pred_all, img_true_all, trans_all,  x_
             image = image * 255  # Convert from [0, 1] to [0, 255]
             return image.astype(np.uint8)
         
+       
+
+        def dice_score(pred, target, epsilon=1e-6):
+            """
+            Compute Dice score for binary masks.
+            Inputs are binary NumPy arrays of shape (B, 1, H, W).
+            """
+            pred_flat = pred.reshape(pred.shape[0], -1)
+            target_flat = target.reshape(target.shape[0], -1)
+
+            intersection = (pred_flat * target_flat).sum(axis=1)
+            union = pred_flat.sum(axis=1) + target_flat.sum(axis=1)
+
+            dice = (2.0 * intersection + epsilon) / (union + epsilon)
+            return dice  # shape: (batchsize,)
+
+        
+        pred_bin = (predicted_mask_all[i,:,:,:].squeeze() <= 0).astype(np.uint8)
+        gt_bin = (test_gt_m_sdf[i,:,:,:].squeeze() <= 0).astype(np.uint8)
+        print("pred_bin",pred_bin.shape)
+        print("gt_bin",gt_bin.shape)
+        # Count 0s and 1s in pred_bin
+        unique_pred, counts_pred = np.unique(pred_bin, return_counts=True)
+        print("pred_bin value counts:", dict(zip(unique_pred, counts_pred)))
+
+        # Count 0s and 1s in gt_bin
+        unique_gt, counts_gt = np.unique(gt_bin, return_counts=True)
+        print("gt_bin value counts:", dict(zip(unique_gt, counts_gt)))
+
+        # Compute Dice scores
+        dice_scores = dice_score(pred_bin, gt_bin)
+        mean_dice = dice_scores.mean()
         # Load LPIPS model (AlexNet or VGG)
         lpips_model = lpips.LPIPS(pretrained=True, pnet_rand=False, net='squeeze', eval_mode=True, spatial=True, lpips=True).to('cuda') 
         pred = normalize_image(img_pred_all[i])
@@ -200,7 +242,7 @@ def save_images_and_calculate_metrics(img_pred_all, img_true_all, trans_all,  x_
         
 
         # Get bounding box covering both
-        output_mask = get_square_bounding_mask(np.squeeze(contrast_arota_mask_all[i]), np.squeeze(noncontrast_arota_mask_all[i]))
+        output_mask = get_square_bounding_mask(np.squeeze(contrast_arota_mask_all[i,:, :, :]), np.squeeze(noncontrast_arota_mask_all[i,:, :, :]))
 
         # Crop both
         print("trans", trans.shape)
@@ -258,6 +300,7 @@ def save_images_and_calculate_metrics(img_pred_all, img_true_all, trans_all,  x_
         lpips_crop_values.append(perceptual_dist_crop.mean().item())
         mse_whole_values.append(mse_whole)
         mse_crop_values.append(mse_crop)
+        dice_values.append(mean_dice)
 
         # Stack images horizontally
         def resize_to_256(img):
@@ -265,7 +308,7 @@ def save_images_and_calculate_metrics(img_pred_all, img_true_all, trans_all,  x_
 
         real_arota = resize_to_256(real_arota)
         predicted_cropped = resize_to_256(predicted_cropped)
-        combined_image = np.hstack((true, trans, x, pred, real_arota, predicted_cropped))
+        combined_image = np.hstack((true, trans, x, pred, real_arota, predicted_cropped, 255*pred_bin, 255*gt_bin))
     
 
 
@@ -282,6 +325,7 @@ def save_images_and_calculate_metrics(img_pred_all, img_true_all, trans_all,  x_
     average_lpips_crop = np.mean(lpips_crop_values)
     average_mse_whole = np.mean(mse_whole_values)
     average_mse_crop = np.mean(mse_crop_values)
+    average_dice = np.mean(dice_scores)
 
 
     print("i", i)
@@ -293,6 +337,7 @@ def save_images_and_calculate_metrics(img_pred_all, img_true_all, trans_all,  x_
     print(f"Average LPIPS (Cropped): {average_lpips_crop:.4f}")
     print(f"Average MSE (Whole): {average_mse_whole:.6f}")
     print(f"Average MSE (Cropped): {average_mse_crop:.6f}")
+    print(f"Average Dice : {average_dice:.6f}")
 
     
 
@@ -387,6 +432,8 @@ def main(args):
              config.score_model.image_size))
     x_all = np.zeros((n*(config.sampling.batch_size), config.score_model.num_input_channels, config.score_model.image_size,
              config.score_model.image_size))
+    predicted_mask_all = np.zeros((n*(config.sampling.batch_size), config.score_model.num_input_channels, config.score_model.image_size,
+             config.score_model.image_size))
     # brain_mask_all = np.zeros((len(test_loader.dataset), config.score_model.num_input_channels, config.score_model.image_size, config.score_model.image_size))
     # test_data_seg_all = np.zeros((len(test_loader.dataset), config.score_model.num_input_channels,
     #                            config.score_model.image_size, config.score_model.image_size))
@@ -425,7 +472,8 @@ def main(args):
             test_data_arota = test_data_dict.pop('noncon_arota').cuda()
             test_data_conarota = test_data_dict.pop('contrast_mask_tolerated').numpy()
             test_trans_lumen_mask_tolerated = test_data_dict.pop('trans_lumen_mask_tolerated').cuda()
-            test_m_sdf = test_data_dict.pop('m_sdf').cuda()
+            test_m_sdf = test_data_dict.pop('m_sdf').cuda()  
+            test_coarse_m_sdf = test_data_dict.pop('coarse_m_sdf').cuda()
 
             cond_hist = None
             if args.contrast_hist:
@@ -454,7 +502,7 @@ def main(args):
         #                      patch_size=128, stride=128, batch_size=32 )
         
         sample = sample_fn(
-            model_forward, model_backward, test_data_input, test_data_seg,cond_hist, cond,args.cond_on_lumen_mask,lumen,
+            model_forward, model_backward, test_data_input, test_data_seg,cond_hist, cond,args.cond_on_lumen_mask,lumen,test_coarse_m_sdf,
             (test_data_seg.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
              config.score_model.image_size),
             model_name=args.model_name,
@@ -474,6 +522,7 @@ def main(args):
         sample_datach = x_datach*(test_data_seg.detach().cpu().numpy())
         noncon_arota_mask = test_data_seg.detach().cpu().numpy()
         con_arota_mask = test_data_conarota
+        predicted_mask = sample[4].detach().cpu().numpy()
         
 
         # Assume sample_datach and test_data_conarota are already loaded numpy arrays
@@ -498,6 +547,7 @@ def main(args):
         contrast_arota_mask_all[num_sample:num_sample+test_data_input.shape[0]]=con_arota_mask
         noncontrast_arota_mask_all[num_sample:num_sample+test_data_input.shape[0]]=noncon_arota_mask
         x_all[num_sample:num_sample+test_data_input.shape[0]]=x_datach
+        predicted_mask_all[num_sample:num_sample+test_data_input.shape[0]] = predicted_mask
 
         num_sample += test_data_input.shape[0]
     logger.log("all the confidence maps from the testing set saved...")
@@ -522,7 +572,7 @@ def main(args):
         output_folder_pred = "/mnt/data/data/evaluation/predict" +filename[:-3] + "timestep1000"# Change to your actual folder
       
         # save_images(img_pred_all, img_true_all, trans_all,output_folder_pred, output_folder_true,output_folder_trans,num_sample)
-        save_images_and_calculate_metrics(img_pred_all, img_true_all, trans_all,x_all,contrast_arota_mask_all, noncontrast_arota_mask_all, output_folder_pred, num_sample)
+        save_images_and_calculate_metrics(img_pred_all, img_true_all, trans_all,x_all,contrast_arota_mask_all, noncontrast_arota_mask_all, predicted_mask_all,test_m_sdf, output_folder_pred, num_sample)
     elif args.model_name == 'diffusion_':
         filename_mask = "mask_forward_"+args.experiment_name_forward+'_backward_'+args.experiment_name_backward+".pt"
         filename_x0 = "cyclic_predict_"+args.experiment_name_forward+'_backward_'+args.experiment_name_backward+".pt"
@@ -557,7 +607,7 @@ if __name__ == "__main__":
     parser.add_argument("--use_ddim", help="if you want to use ddim during sampling, True or False", type=str, default='False')
     parser.add_argument("--timestep_respacing", help="If you want to rescale timestep during sampling. enter the timestep you want to rescale the diffusion prcess to. If you do not wish to resale thetimestep, leave it blank or put 1000.", type=int,
                         default=1000)
-    parser.add_argument("--modelfilename", help="brats", type=str, default='model400000_cond_nonconarota_cond_nonconhist.pt')
+    parser.add_argument("--modelfilename", help="brats", type=str, default='model040000_ddpm_renonstruct_onlycontrust_cond_square_nonconarota_cond_mask_square_lpips_loss_joint_mse.pt')
     parser.add_argument("--filter", help="a npy to filter data based on pixel difference and mask difference", type=str, default='/mnt/data/data/OxAAA/test/normalized/test_file_with_lumen.npy')
     parser.add_argument("--contrast_hist", help="a npy to filter data based on pixel difference and mask difference", action="store_true")
     parser.add_argument("--noncontrast_hist", help="a npy to filter data based on pixel difference and mask difference", action="store_true")
