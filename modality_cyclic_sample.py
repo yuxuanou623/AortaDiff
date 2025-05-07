@@ -144,8 +144,8 @@ def save_images_and_calculate_metrics(img_pred_all, img_true_all, trans_all,  x_
             pred_flat = pred.reshape(pred.shape[0], -1)
             target_flat = target.reshape(target.shape[0], -1)
 
-            intersection = (pred_flat * target_flat).sum(axis=1)
-            union = pred_flat.sum(axis=1) + target_flat.sum(axis=1)
+            intersection = (pred_flat * target_flat).sum()
+            union = pred_flat.sum() + target_flat.sum()
 
             dice = (2.0 * intersection + epsilon) / (union + epsilon)
             return dice  # shape: (batchsize,)
