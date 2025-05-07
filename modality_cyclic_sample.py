@@ -434,6 +434,8 @@ def main(args):
              config.score_model.image_size))
     predicted_mask_all = np.zeros((n*(config.sampling.batch_size), config.score_model.num_input_channels, config.score_model.image_size,
              config.score_model.image_size))
+    gt_mask_all = np.zeros((n*(config.sampling.batch_size), config.score_model.num_input_channels, config.score_model.image_size,
+             config.score_model.image_size))
     # brain_mask_all = np.zeros((len(test_loader.dataset), config.score_model.num_input_channels, config.score_model.image_size, config.score_model.image_size))
     # test_data_seg_all = np.zeros((len(test_loader.dataset), config.score_model.num_input_channels,
     #                            config.score_model.image_size, config.score_model.image_size))
@@ -548,6 +550,7 @@ def main(args):
         noncontrast_arota_mask_all[num_sample:num_sample+test_data_input.shape[0]]=noncon_arota_mask
         x_all[num_sample:num_sample+test_data_input.shape[0]]=x_datach
         predicted_mask_all[num_sample:num_sample+test_data_input.shape[0]] = predicted_mask
+        gt_mask_all[num_sample:num_sample+test_data_input.shape[0]]= test_m_sdf.detach().cpu().numpy()
 
         num_sample += test_data_input.shape[0]
     logger.log("all the confidence maps from the testing set saved...")
@@ -572,7 +575,7 @@ def main(args):
         output_folder_pred = "/mnt/data/data/evaluation/predict" +filename[:-3] + "timestep1000"# Change to your actual folder
       
         # save_images(img_pred_all, img_true_all, trans_all,output_folder_pred, output_folder_true,output_folder_trans,num_sample)
-        save_images_and_calculate_metrics(img_pred_all, img_true_all, trans_all,x_all,contrast_arota_mask_all, noncontrast_arota_mask_all, predicted_mask_all,test_m_sdf, output_folder_pred, num_sample)
+        save_images_and_calculate_metrics(img_pred_all, img_true_all, trans_all,x_all,contrast_arota_mask_all, noncontrast_arota_mask_all, predicted_mask_all,gt_mask_all, output_folder_pred, num_sample)
     elif args.model_name == 'diffusion_':
         filename_mask = "mask_forward_"+args.experiment_name_forward+'_backward_'+args.experiment_name_backward+".pt"
         filename_x0 = "cyclic_predict_"+args.experiment_name_forward+'_backward_'+args.experiment_name_backward+".pt"
@@ -607,7 +610,7 @@ if __name__ == "__main__":
     parser.add_argument("--use_ddim", help="if you want to use ddim during sampling, True or False", type=str, default='False')
     parser.add_argument("--timestep_respacing", help="If you want to rescale timestep during sampling. enter the timestep you want to rescale the diffusion prcess to. If you do not wish to resale thetimestep, leave it blank or put 1000.", type=int,
                         default=1000)
-    parser.add_argument("--modelfilename", help="brats", type=str, default='model040000_ddpm_renonstruct_onlycontrust_cond_square_nonconarota_cond_mask_square_lpips_loss_joint_mse.pt')
+    parser.add_argument("--modelfilename", help="brats", type=str, default='model080000ddpm_renonstruct_onlycontrust_cond_square_nonconarota_cond_mask_square_lpips_loss_joint_mean.pt')
     parser.add_argument("--filter", help="a npy to filter data based on pixel difference and mask difference", type=str, default='/mnt/data/data/OxAAA/test/normalized/test_file_with_lumen.npy')
     parser.add_argument("--contrast_hist", help="a npy to filter data based on pixel difference and mask difference", action="store_true")
     parser.add_argument("--noncontrast_hist", help="a npy to filter data based on pixel difference and mask difference", action="store_true")

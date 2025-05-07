@@ -763,10 +763,6 @@ class GaussianDiffusion:
             for t_last, t_cur in time_pairs:
                 print(t_last, t_cur)
 
-                if t_last == 998:
-                    import sys
-                    sys.exit()
-
                 
                 
                 idx_wall += 1
@@ -820,7 +816,7 @@ class GaussianDiffusion:
    
                     x_yield = [prev_img_forward, out_forward["mask"], out_forward["weightedgt"], out_forward["x"], prev_mask_forward]
                     img_forward = prev_img_forward
-                    mask_forward  = prev_mask_forward
+                    #mask_forward  = prev_mask_forward
 
                 
 
