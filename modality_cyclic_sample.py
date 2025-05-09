@@ -45,7 +45,7 @@ def dice_score(pred, targs):
 
 
 
-def save_images_and_calculate_metrics(img_pred_all, img_true_all, trans_all,  x_all,contrast_arota_mask_all, noncontrast_arota_mask_all, predicted_mask_all,test_gt_m_sdf, output_folder, n):
+def save_images_and_calculate_metrics(batch_index, img_pred_all, img_true_all, trans_all,  x_all,contrast_arota_mask_all, noncontrast_arota_mask_all, predicted_mask_all,test_gt_m_sdf, output_folder, n):
     """
     Saves the first `n` images from img_pred_all, img_true_all, and trans_all as a single PNG file with
     each image side by side, and calculates average PSNR and SSIM for pred vs true and pred vs trans.
@@ -313,8 +313,10 @@ def save_images_and_calculate_metrics(img_pred_all, img_true_all, trans_all,  x_
 
 
         # Save the combined image
-        filename = os.path.join(output_folder, f"combined_image_{i}.png")
+        filename = os.path.join(output_folder, f"combined_image_{i}_{batch_index}.png")
         cv2.imwrite(filename, combined_image)
+        x_only_filename = os.path.join(output_folder, f"x_only_{i}_{batch_index}.png")
+        cv2.imwrite(x_only_filename, x)
 
     # Compute average PSNR and SSIM
     average_psnr_whole = np.mean(psnr_whole_values)
@@ -341,7 +343,7 @@ def save_images_and_calculate_metrics(img_pred_all, img_true_all, trans_all,  x_
 
     
 
-    return 
+    return average_psnr_whole, average_psnr_crop, average_ssim_whole, average_ssim_crop, average_lpips_whole, average_lpips_crop, average_mse_whole, average_mse_crop
 
 
 
@@ -419,29 +421,19 @@ def main(args):
     num_batch = 0
     num_sample = 0
     
-    n=20
-    img_true_all = np.zeros((n*(config.sampling.batch_size), config.score_model.num_input_channels, config.score_model.image_size,
-             config.score_model.image_size))
-    img_pred_all = np.zeros((n*(config.sampling.batch_size), config.score_model.num_input_channels, config.score_model.image_size,
-            config.score_model.image_size))
-    trans_all = np.zeros((n*(config.sampling.batch_size), config.score_model.num_input_channels, config.score_model.image_size,
-             config.score_model.image_size))
-    contrast_arota_mask_all = np.zeros((n*(config.sampling.batch_size), config.score_model.num_input_channels, config.score_model.image_size,
-             config.score_model.image_size))
-    noncontrast_arota_mask_all = np.zeros((n*(config.sampling.batch_size), config.score_model.num_input_channels, config.score_model.image_size,
-             config.score_model.image_size))
-    x_all = np.zeros((n*(config.sampling.batch_size), config.score_model.num_input_channels, config.score_model.image_size,
-             config.score_model.image_size))
-    predicted_mask_all = np.zeros((n*(config.sampling.batch_size), config.score_model.num_input_channels, config.score_model.image_size,
-             config.score_model.image_size))
-    gt_mask_all = np.zeros((n*(config.sampling.batch_size), config.score_model.num_input_channels, config.score_model.image_size,
-             config.score_model.image_size))
+    avg_whole_psnr = []
+    avg_crop_psnr = []
+    avg_whole_ssim = []
+    avg_crop_ssim = []
+    avg_whole_lpips = []
+    avg_crop_lpips = []
+    avg_whole_mse = []
+    avg_crop_mse = []
     # brain_mask_all = np.zeros((len(test_loader.dataset), config.score_model.num_input_channels, config.score_model.image_size, config.score_model.image_size))
     # test_data_seg_all = np.zeros((len(test_loader.dataset), config.score_model.num_input_channels,
     #                            config.score_model.image_size, config.score_model.image_size))
     for i, test_data_dict in tqdm(enumerate(test_loader), total=len(test_loader)):
-        if i >=n:
-            break
+      
         model_kwargs = {}
         ### brats dataset ###
         if args.dataset == 'brats':
@@ -488,6 +480,24 @@ def main(args):
             else:
                 cond = test_data_arota
 
+
+            img_true_all = np.zeros((test_data_input.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
+             config.score_model.image_size))
+            img_pred_all = np.zeros((test_data_input.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
+                    config.score_model.image_size))
+            trans_all = np.zeros( (test_data_input.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
+                    config.score_model.image_size))
+            contrast_arota_mask_all = np.zeros((test_data_input.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
+                    config.score_model.image_size))
+            noncontrast_arota_mask_all = np.zeros((test_data_input.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
+                    config.score_model.image_size))
+            x_all = np.zeros((test_data_input.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
+                    config.score_model.image_size))
+            predicted_mask_all = np.zeros((test_data_input.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
+                    config.score_model.image_size))
+            gt_mask_all = np.zeros((test_data_input.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
+                    config.score_model.image_size))
+
            
             if args.sdg_lumen_mask: 
                 lumen = test_m_sdf
@@ -533,60 +543,51 @@ def main(args):
 
 
 
-        print(sample_datach.max())
-        print(sample_datach.min())
-        print(x_datach.max())
-        print(x_datach.min())
-        print("sample_datach", sample_datach.shape)
+        
         test_data_seg_detach = test_data_seg.detach().cpu().numpy()
-        print("test_data_input_detach", test_data_seg_detach.shape)
+        img_true_all= test_data_input.detach().cpu().numpy()
+        img_pred_all= sample_datach
+        trans_all=test_data_gt.detach().cpu().numpy()
+        contrast_arota_mask_all=con_arota_mask
+        noncontrast_arota_mask_all=noncon_arota_mask
+        x_all=x_datach
+        predicted_mask_all = predicted_mask
+        gt_mask_all= test_m_sdf.detach().cpu().numpy()
 
-        print("test_data_input.shape[0]",test_data_input.shape[0])
-        print("test_data_input.detach().cpu().numpy()",test_data_input.detach().cpu().numpy().shape)
-        img_true_all[num_sample:num_sample+test_data_input.shape[0]] = test_data_input.detach().cpu().numpy()
-        img_pred_all[num_sample:num_sample+test_data_input.shape[0]] = sample_datach
-        trans_all[num_sample:num_sample+test_data_input.shape[0]]=test_data_gt.detach().cpu().numpy()
-        contrast_arota_mask_all[num_sample:num_sample+test_data_input.shape[0]]=con_arota_mask
-        noncontrast_arota_mask_all[num_sample:num_sample+test_data_input.shape[0]]=noncon_arota_mask
-        x_all[num_sample:num_sample+test_data_input.shape[0]]=x_datach
-        predicted_mask_all[num_sample:num_sample+test_data_input.shape[0]] = predicted_mask
-        gt_mask_all[num_sample:num_sample+test_data_input.shape[0]]= test_m_sdf.detach().cpu().numpy()
-
-        num_sample += test_data_input.shape[0]
-    logger.log("all the confidence maps from the testing set saved...")
-    if args.model_name == 'diffusion':
-        print("img_pred_all", img_pred_all.shape)
-        error = (trans_all - img_pred_all) ** 2
-        print("error", type(error))
-        def mean_flat(tensor):
-            """
-            Take the mean over all non-batch dimensions.
-            """
-            return tensor.mean(axis=tuple(range(1, len(tensor.shape))))
-        print("meanflat",mean_flat(error))
-        print("meanflat mea ",np.mean(mean_flat(error)))
-
-        error = np.array(error)
-        print("sum",error.sum())
-        error_map = normalize(error)
-        print("error_map")
-        print(type(error_map))
-        print("error_map",error_map.sum())
-        output_folder_pred = "/mnt/data/data/evaluation/predict" +filename[:-3] + "timestep1000"# Change to your actual folder
-      
-        # save_images(img_pred_all, img_true_all, trans_all,output_folder_pred, output_folder_true,output_folder_trans,num_sample)
-        save_images_and_calculate_metrics(img_pred_all, img_true_all, trans_all,x_all,contrast_arota_mask_all, noncontrast_arota_mask_all, predicted_mask_all,gt_mask_all, output_folder_pred, num_sample)
-    elif args.model_name == 'diffusion_':
-        filename_mask = "mask_forward_"+args.experiment_name_forward+'_backward_'+args.experiment_name_backward+".pt"
-        filename_x0 = "cyclic_predict_"+args.experiment_name_forward+'_backward_'+args.experiment_name_backward+".pt"
-        with bf.BlobFile(bf.join(logger.get_dir(), filename_mask), "rb") as f:
-            tensor_load_mask = th.load(f)
-        with bf.BlobFile(bf.join(logger.get_dir(), filename_x0), "rb") as f:
-            tensor_load_xpred = th.load(f)
-        load_gt_repeat = np.expand_dims(img_true_all, axis=0).repeat(tensor_load_mask.shape[0], axis=0)
-        error_map = (np.abs(tensor_load_xpred.numpy() - load_gt_repeat)) ** 2
-        mean_error_map = np.sum(error_map * (1-tensor_load_mask.numpy()), 0) / np.sum((1-tensor_load_mask.numpy()), 0)
-        error_map = normalize(np.where(np.isnan(mean_error_map), 0, mean_error_map))
+        num_sample= test_data_input.shape[0]
+        logger.log("all the confidence maps from the testing set saved...")
+        if args.model_name == 'diffusion':
+        
+            error = (trans_all - img_pred_all) ** 2
+        
+                
+            error = np.array(error)
+        
+            error_map = normalize(error)
+            output_folder_pred = "/mnt/data/data/evaluation/predict" +filename[:-3] + "timestep1000new"# Change to your actual folder
+        
+            # save_images(img_pred_all, img_true_all, trans_all,output_folder_pred, output_folder_true,output_folder_trans,num_sample)
+            
+            average_psnr_whole, average_psnr_crop, average_ssim_whole, average_ssim_crop, average_lpips_whole, average_lpips_crop, average_mse_whole, average_mse_crop = save_images_and_calculate_metrics(i,img_pred_all, img_true_all, trans_all,x_all,contrast_arota_mask_all, noncontrast_arota_mask_all, predicted_mask_all,gt_mask_all, output_folder_pred, num_sample)
+            avg_whole_psnr.append(average_psnr_whole)
+            avg_crop_psnr.append(average_psnr_crop)
+            avg_whole_ssim.append(average_ssim_whole)
+            avg_crop_ssim.append(average_ssim_crop)
+            avg_whole_lpips.append(average_lpips_whole)
+            avg_crop_lpips.append(average_lpips_crop)
+            avg_whole_mse.append(average_mse_whole)
+            avg_crop_mse.append(average_mse_crop)
+        elif args.model_name == 'diffusion_':
+            filename_mask = "mask_forward_"+args.experiment_name_forward+'_backward_'+args.experiment_name_backward+".pt"
+            filename_x0 = "cyclic_predict_"+args.experiment_name_forward+'_backward_'+args.experiment_name_backward+".pt"
+            with bf.BlobFile(bf.join(logger.get_dir(), filename_mask), "rb") as f:
+                tensor_load_mask = th.load(f)
+            with bf.BlobFile(bf.join(logger.get_dir(), filename_x0), "rb") as f:
+                tensor_load_xpred = th.load(f)
+            load_gt_repeat = np.expand_dims(img_true_all, axis=0).repeat(tensor_load_mask.shape[0], axis=0)
+            error_map = (np.abs(tensor_load_xpred.numpy() - load_gt_repeat)) ** 2
+            mean_error_map = np.sum(error_map * (1-tensor_load_mask.numpy()), 0) / np.sum((1-tensor_load_mask.numpy()), 0)
+            error_map = normalize(np.where(np.isnan(mean_error_map), 0, mean_error_map))
     
 def reseed_random(seed):
     random.seed(seed)  # python random generator

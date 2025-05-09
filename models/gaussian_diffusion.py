@@ -404,41 +404,41 @@ class GaussianDiffusion:
             updated_mask_1 = updated_mask_1.byte()
    
 
-        img_pil = TF.to_pil_image(updated_mask_1)
-        img_pil.save("slice_11.png")
+        # img_pil = TF.to_pil_image(updated_mask_1)
+        # img_pil.save("slice_11.png")
 
-        updated_mask_1 = model_output[1, :, :, :].squeeze(0) 
-        # If it's a float tensor (e.g. in [0,1]), scale to [0,255]
-        if updated_mask_1.dtype == th.float32 or updated_mask_1.max() <= 1.0:
-            updated_mask_1 = (updated_mask_1 * 255).clamp(0, 255).byte()
-        else:
-            updated_mask_1 = updated_mask_1.byte()
+        # updated_mask_1 = model_output[1, :, :, :].squeeze(0) 
+        # # If it's a float tensor (e.g. in [0,1]), scale to [0,255]
+        # if updated_mask_1.dtype == th.float32 or updated_mask_1.max() <= 1.0:
+        #     updated_mask_1 = (updated_mask_1 * 255).clamp(0, 255).byte()
+        # else:
+        #     updated_mask_1 = updated_mask_1.byte()
    
 
-        img_pil = TF.to_pil_image(updated_mask_1)
-        img_pil.save("slice_21.png")
+        # img_pil = TF.to_pil_image(updated_mask_1)
+        # img_pil.save("slice_21.png")
 
-        updated_mask_1 = coarse_lumen_mask[1, :, :, :].squeeze(0) 
-        # If it's a float tensor (e.g. in [0,1]), scale to [0,255]
-        if updated_mask_1.dtype == th.float32 or updated_mask_1.max() <= 1.0:
-            updated_mask_1 = (updated_mask_1 * 255).clamp(0, 255).byte()
-        else:
-            updated_mask_1 = updated_mask_1.byte()
+        # updated_mask_1 = coarse_lumen_mask[1, :, :, :].squeeze(0) 
+        # # If it's a float tensor (e.g. in [0,1]), scale to [0,255]
+        # if updated_mask_1.dtype == th.float32 or updated_mask_1.max() <= 1.0:
+        #     updated_mask_1 = (updated_mask_1 * 255).clamp(0, 255).byte()
+        # else:
+        #     updated_mask_1 = updated_mask_1.byte()
    
 
-        img_pil = TF.to_pil_image(updated_mask_1)
-        img_pil.save("slice_01.png")
+        # img_pil = TF.to_pil_image(updated_mask_1)
+        # img_pil.save("slice_01.png")
 
-        updated_mask_1 = lumen_mask[1, :, :, :].squeeze(0) 
-        # If it's a float tensor (e.g. in [0,1]), scale to [0,255]
-        if updated_mask_1.dtype == th.float32 or updated_mask_1.max() <= 1.0:
-            updated_mask_1 = (updated_mask_1 * 255).clamp(0, 255).byte()
-        else:
-            updated_mask_1 = updated_mask_1.byte()
+        # updated_mask_1 = lumen_mask[1, :, :, :].squeeze(0) 
+        # # If it's a float tensor (e.g. in [0,1]), scale to [0,255]
+        # if updated_mask_1.dtype == th.float32 or updated_mask_1.max() <= 1.0:
+        #     updated_mask_1 = (updated_mask_1 * 255).clamp(0, 255).byte()
+        # else:
+        #     updated_mask_1 = updated_mask_1.byte()
    
 
-        img_pil = TF.to_pil_image(updated_mask_1)
-        img_pil.save("slice_4.png")
+        # img_pil = TF.to_pil_image(updated_mask_1)
+        # img_pil.save("slice_4.png")
        
         # model_output = model(x_in, **model_kwargs)
         # model_output = model(x, self._scale_timesteps(t), **model_kwargs)
@@ -819,63 +819,63 @@ class GaussianDiffusion:
                     #mask_forward  = prev_mask_forward
 
 
-                    import matplotlib.pyplot as plt
-                    # === Timesteps you want to save ===
-                    save_timesteps = [998, 995, 990, 950, 900, 800, 500, 100, 1]
+                    # import matplotlib.pyplot as plt
+                    # # === Timesteps you want to save ===
+                    # save_timesteps = [998, 995, 990, 950, 900, 800, 500, 100, 1]
 
-                    # === Load or create persistent storage ===
-                    saved_img_list = getattr(self, "_saved_img_list", {})
-                    saved_mask_list = getattr(self, "_saved_mask_list", {})
-                    saved_startimg_list = getattr(self, "_start_img_list", {})
+                    # # === Load or create persistent storage ===
+                    # saved_img_list = getattr(self, "_saved_img_list", {})
+                    # saved_mask_list = getattr(self, "_saved_mask_list", {})
+                    # saved_startimg_list = getattr(self, "_start_img_list", {})
 
-                    if t_cur in save_timesteps:
-                        # Save the entire batch
-                        saved_img_list[t_cur] = prev_img_forward.detach().cpu()  # shape: [B, 1, H, W]
-                        saved_mask_list[t_cur] = prev_mask_forward.detach().cpu()
-                        saved_startimg_list[t_cur] = out_forward["pred_xstart"].detach().cpu()
+                    # if t_cur in save_timesteps:
+                    #     # Save the entire batch
+                    #     saved_img_list[t_cur] = prev_img_forward.detach().cpu()  # shape: [B, 1, H, W]
+                    #     saved_mask_list[t_cur] = prev_mask_forward.detach().cpu()
+                    #     saved_startimg_list[t_cur] = out_forward["pred_xstart"].detach().cpu()
 
-                        # Store back to self for persistence
-                        self._saved_img_list = saved_img_list
-                        self._saved_mask_list = saved_mask_list
-                        self._start_img_list = saved_startimg_list
+                    #     # Store back to self for persistence
+                    #     self._saved_img_list = saved_img_list
+                    #     self._saved_mask_list = saved_mask_list
+                    #     self._start_img_list = saved_startimg_list
 
                      
                         
 
-                        # === Save once all timesteps are collected ===
-                        if len(saved_img_list) == len(save_timesteps):
-                            save_dir = "/home/trin4156/Desktop/codes/MMCCD"
-                            os.makedirs(save_dir, exist_ok=True)
+                    #     # === Save once all timesteps are collected ===
+                    #     if len(saved_img_list) == len(save_timesteps):
+                    #         save_dir = "/home/trin4156/Desktop/codes/MMCCD"
+                    #         os.makedirs(save_dir, exist_ok=True)
 
-                            sorted_ts = sorted(save_timesteps, reverse=True)
-                            batch_size = prev_img_forward.shape[0]
+                    #         sorted_ts = sorted(save_timesteps, reverse=True)
+                    #         batch_size = prev_img_forward.shape[0]
 
-                            # For each sample in the batch, generate one PNG
-                            for idx in range(batch_size):
-                                fig, axes = plt.subplots(3, len(sorted_ts), figsize=(3 * len(sorted_ts), 6))
+                    #         # For each sample in the batch, generate one PNG
+                    #         for idx in range(batch_size):
+                    #             fig, axes = plt.subplots(3, len(sorted_ts), figsize=(3 * len(sorted_ts), 6))
 
-                                for i, t in enumerate(sorted_ts):
-                                    img_np = saved_img_list[t][idx, 0].numpy()  # [H, W]
-                                    mask_np = saved_mask_list[t][idx, 0].numpy()  # [H, W]
-                                    predstart_np = saved_startimg_list[t][idx, 0].numpy()  # [H, W]
+                    #             for i, t in enumerate(sorted_ts):
+                    #                 img_np = saved_img_list[t][idx, 0].numpy()  # [H, W]
+                    #                 mask_np = saved_mask_list[t][idx, 0].numpy()  # [H, W]
+                    #                 predstart_np = saved_startimg_list[t][idx, 0].numpy()  # [H, W]
 
-                                    axes[0, i].imshow(img_np, cmap='gray')
-                                    axes[0, i].set_title(f"Image t={t}")
-                                    axes[0, i].axis('off')
+                    #                 axes[0, i].imshow(img_np, cmap='gray')
+                    #                 axes[0, i].set_title(f"Image t={t}")
+                    #                 axes[0, i].axis('off')
 
-                                    axes[1, i].imshow(mask_np, cmap='gray')
-                                    axes[1, i].set_title(f"Mask t={t}")
-                                    axes[1, i].axis('off')
+                    #                 axes[1, i].imshow(mask_np, cmap='gray')
+                    #                 axes[1, i].set_title(f"Mask t={t}")
+                    #                 axes[1, i].axis('off')
 
-                                    axes[2, i].imshow(predstart_np, cmap='gray')
-                                    axes[2, i].set_title(f"Pred start t={t}")
-                                    axes[2, i].axis('off')
+                    #                 axes[2, i].imshow(predstart_np, cmap='gray')
+                    #                 axes[2, i].set_title(f"Pred start t={t}")
+                    #                 axes[2, i].axis('off')
 
-                                plt.tight_layout()
-                                out_path = os.path.join(save_dir, f"sample_{idx:02d}_timesteps.png")
-                                plt.savefig(out_path)
-                                plt.close()
-                                print(f"✅ Saved: {out_path}")
+                    #             plt.tight_layout()
+                    #             out_path = os.path.join(save_dir, f"sample_{idx:02d}_timesteps.png")
+                    #             plt.savefig(out_path)
+                    #             plt.close()
+                    #             print(f"✅ Saved: {out_path}")
 
                 
 
