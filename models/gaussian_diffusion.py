@@ -818,6 +818,65 @@ class GaussianDiffusion:
                     img_forward = prev_img_forward
                     #mask_forward  = prev_mask_forward
 
+
+                    import matplotlib.pyplot as plt
+                    # === Timesteps you want to save ===
+                    save_timesteps = [998, 995, 990, 950, 900, 800, 500, 100, 1]
+
+                    # === Load or create persistent storage ===
+                    saved_img_list = getattr(self, "_saved_img_list", {})
+                    saved_mask_list = getattr(self, "_saved_mask_list", {})
+                    saved_startimg_list = getattr(self, "_start_img_list", {})
+
+                    if t_cur in save_timesteps:
+                        # Save the entire batch
+                        saved_img_list[t_cur] = prev_img_forward.detach().cpu()  # shape: [B, 1, H, W]
+                        saved_mask_list[t_cur] = prev_mask_forward.detach().cpu()
+                        saved_startimg_list[t_cur] = out_forward["pred_xstart"].detach().cpu()
+
+                        # Store back to self for persistence
+                        self._saved_img_list = saved_img_list
+                        self._saved_mask_list = saved_mask_list
+                        self._start_img_list = saved_startimg_list
+
+                     
+                        
+
+                        # === Save once all timesteps are collected ===
+                        if len(saved_img_list) == len(save_timesteps):
+                            save_dir = "/home/trin4156/Desktop/codes/MMCCD"
+                            os.makedirs(save_dir, exist_ok=True)
+
+                            sorted_ts = sorted(save_timesteps, reverse=True)
+                            batch_size = prev_img_forward.shape[0]
+
+                            # For each sample in the batch, generate one PNG
+                            for idx in range(batch_size):
+                                fig, axes = plt.subplots(3, len(sorted_ts), figsize=(3 * len(sorted_ts), 6))
+
+                                for i, t in enumerate(sorted_ts):
+                                    img_np = saved_img_list[t][idx, 0].numpy()  # [H, W]
+                                    mask_np = saved_mask_list[t][idx, 0].numpy()  # [H, W]
+                                    predstart_np = saved_startimg_list[t][idx, 0].numpy()  # [H, W]
+
+                                    axes[0, i].imshow(img_np, cmap='gray')
+                                    axes[0, i].set_title(f"Image t={t}")
+                                    axes[0, i].axis('off')
+
+                                    axes[1, i].imshow(mask_np, cmap='gray')
+                                    axes[1, i].set_title(f"Mask t={t}")
+                                    axes[1, i].axis('off')
+
+                                    axes[2, i].imshow(predstart_np, cmap='gray')
+                                    axes[2, i].set_title(f"Pred start t={t}")
+                                    axes[2, i].axis('off')
+
+                                plt.tight_layout()
+                                out_path = os.path.join(save_dir, f"sample_{idx:02d}_timesteps.png")
+                                plt.savefig(out_path)
+                                plt.close()
+                                print(f"✅ Saved: {out_path}")
+
                 
 
 

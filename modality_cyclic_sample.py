@@ -610,7 +610,7 @@ if __name__ == "__main__":
     parser.add_argument("--use_ddim", help="if you want to use ddim during sampling, True or False", type=str, default='False')
     parser.add_argument("--timestep_respacing", help="If you want to rescale timestep during sampling. enter the timestep you want to rescale the diffusion prcess to. If you do not wish to resale thetimestep, leave it blank or put 1000.", type=int,
                         default=1000)
-    parser.add_argument("--modelfilename", help="brats", type=str, default='model080000ddpm_renonstruct_onlycontrust_cond_square_nonconarota_cond_mask_square_lpips_loss_joint_mean.pt')
+    parser.add_argument("--modelfilename", help="brats", type=str, default='model080000ddpm_renonstruct_onlycontrust_cond_square_nonconarota_cond_mask_square_lpips_loss_joint_no_init_mask.pt')
     parser.add_argument("--filter", help="a npy to filter data based on pixel difference and mask difference", type=str, default='/mnt/data/data/OxAAA/test/normalized/test_file_with_lumen.npy')
     parser.add_argument("--contrast_hist", help="a npy to filter data based on pixel difference and mask difference", action="store_true")
     parser.add_argument("--noncontrast_hist", help="a npy to filter data based on pixel difference and mask difference", action="store_true")
