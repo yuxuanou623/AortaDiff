@@ -434,161 +434,166 @@ def main(args):
     #                            config.score_model.image_size, config.score_model.image_size))
     for i, test_data_dict in tqdm(enumerate(test_loader), total=len(test_loader)):
       
-        model_kwargs = {}
-        ### brats dataset ###
-        if args.dataset == 'brats':
-            test_data_input = test_data_dict[1].pop('input').cuda()
-            test_data_seg = test_data_dict[1].pop('seg')
-            brain_mask = test_data_dict[1].pop('brainmask')
-            brain_mask = (th.ones(brain_mask.shape) * (brain_mask > 0)).cuda()
-            test_data_seg = (th.ones(test_data_seg.shape) * (test_data_seg > 0)).cuda()
-        
-        if args.dataset == 'ldfdct':
+        try:
+            model_kwargs = {}
+            ### brats dataset ###
+            if args.dataset == 'brats':
+                test_data_input = test_data_dict[1].pop('input').cuda()
+                test_data_seg = test_data_dict[1].pop('seg')
+                brain_mask = test_data_dict[1].pop('brainmask')
+                brain_mask = (th.ones(brain_mask.shape) * (brain_mask > 0)).cuda()
+                test_data_seg = (th.ones(test_data_seg.shape) * (test_data_seg > 0)).cuda()
             
-            
-            # test_data_input = test_data_dict[1].pop('input').cuda()
-            test_data_input = test_data_dict.pop('input').cuda()
-            # test_data_seg = test_data_dict[1].pop('trans')
-            test_data_seg = test_data_dict.pop('trans')
-
-        elif args.dataset == 'oxaaa':
-            
-            
-            # test_data_input = test_data_dict[1].pop('input').cuda()
-            test_data_input = test_data_dict.pop('input_img').cuda()
-            # test_data_seg = test_data_dict[1].pop('trans')
-            test_data_gt = test_data_dict.pop('contrast').cuda()
-            test_data_seg = test_data_dict.pop('noncontrast_mask_tolerated').cuda()
-
-            
-            test_data_conhist = test_data_dict.pop('trans_hist').cuda()
-            test_data_nonconhist = test_data_dict.pop('input_hist').cuda()
-            test_data_arota = test_data_dict.pop('noncon_arota').cuda()
-            test_data_conarota = test_data_dict.pop('contrast_mask_tolerated').numpy()
-            test_trans_lumen_mask_tolerated = test_data_dict.pop('trans_lumen_mask_tolerated').cuda()
-            test_m_sdf = test_data_dict.pop('m_sdf').cuda()  
-            test_coarse_m_sdf = test_data_dict.pop('coarse_m_sdf').cuda()
-
-            cond_hist = None
-            if args.contrast_hist:
-                cond_hist = test_data_conhist
-            elif args.noncontrast_hist:
-                cond_hist = test_data_nonconhist
-
-            if args.cond_on_noncontrast_mask:
-                cond = test_data_seg
-            else:
-                cond = test_data_arota
-
-
-            img_true_all = np.zeros((test_data_input.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
-             config.score_model.image_size))
-            img_pred_all = np.zeros((test_data_input.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
-                    config.score_model.image_size))
-            trans_all = np.zeros( (test_data_input.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
-                    config.score_model.image_size))
-            contrast_arota_mask_all = np.zeros((test_data_input.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
-                    config.score_model.image_size))
-            noncontrast_arota_mask_all = np.zeros((test_data_input.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
-                    config.score_model.image_size))
-            x_all = np.zeros((test_data_input.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
-                    config.score_model.image_size))
-            predicted_mask_all = np.zeros((test_data_input.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
-                    config.score_model.image_size))
-            gt_mask_all = np.zeros((test_data_input.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
-                    config.score_model.image_size))
-
-           
-            if args.sdg_lumen_mask: 
-                lumen = test_m_sdf
-            else:
-                lumen = test_trans_lumen_mask_tolerated
-            
-
-        sample_fn = (
-                        diffusion.p_sample_loop
-        )
-        print("test_data_input",test_data_input.shape)
-        
-        # sample = sliding_window_inference(test_data_input,sample_fn,  model_forward, model_backward, model_kwargs, config, args,
-        #                      patch_size=128, stride=128, batch_size=32 )
-        
-        sample = sample_fn(
-            model_forward, model_backward, test_data_input, test_data_seg,cond_hist, cond,args.cond_on_lumen_mask,lumen,test_coarse_m_sdf,
-            (test_data_seg.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
-             config.score_model.image_size),
-            model_name=args.model_name,
-            clip_denoised=config.sampling.clip_denoised,  # is True, clip the denoised signal into [-1, 1].
-            model_kwargs=model_kwargs,  # reconstruction = True
-            eta=config.sampling.eta,
-            model_forward_name=args.experiment_name_forward,
-            model_backward_name=args.experiment_name_backward,
-            ddim=args.use_ddim
-
-        )
-        num_batch += 1
-        #sample_datach = sample[0].detach().cpu().numpy()
-        mask_datach = sample[1].detach().cpu().numpy()
-        weighted_datach = sample[2].detach().cpu().numpy()
-        x_datach = sample[0].detach().cpu().numpy()
-        sample_datach = x_datach*(test_data_seg.detach().cpu().numpy())
-        noncon_arota_mask = test_data_seg.detach().cpu().numpy()
-        con_arota_mask = test_data_conarota
-        predicted_mask = sample[4].detach().cpu().numpy()
-        
-
-        # Assume sample_datach and test_data_conarota are already loaded numpy arrays
-
-       
-
-
-
-        
-        test_data_seg_detach = test_data_seg.detach().cpu().numpy()
-        img_true_all= test_data_input.detach().cpu().numpy()
-        img_pred_all= sample_datach
-        trans_all=test_data_gt.detach().cpu().numpy()
-        contrast_arota_mask_all=con_arota_mask
-        noncontrast_arota_mask_all=noncon_arota_mask
-        x_all=x_datach
-        predicted_mask_all = predicted_mask
-        gt_mask_all= test_m_sdf.detach().cpu().numpy()
-
-        num_sample= test_data_input.shape[0]
-        logger.log("all the confidence maps from the testing set saved...")
-        if args.model_name == 'diffusion':
-        
-            error = (trans_all - img_pred_all) ** 2
-        
+            if args.dataset == 'ldfdct':
                 
-            error = np.array(error)
-        
-            error_map = normalize(error)
-            output_folder_pred = "/mnt/data/data/evaluation/predict" +filename[:-3] + "timestep1000new"# Change to your actual folder
-        
-            # save_images(img_pred_all, img_true_all, trans_all,output_folder_pred, output_folder_true,output_folder_trans,num_sample)
+                
+                # test_data_input = test_data_dict[1].pop('input').cuda()
+                test_data_input = test_data_dict.pop('input').cuda()
+                # test_data_seg = test_data_dict[1].pop('trans')
+                test_data_seg = test_data_dict.pop('trans')
+
+            elif args.dataset == 'oxaaa':
+                
+                
+                # test_data_input = test_data_dict[1].pop('input').cuda()
+                test_data_input = test_data_dict.pop('input_img').cuda()
+                # test_data_seg = test_data_dict[1].pop('trans')
+                test_data_gt = test_data_dict.pop('contrast').cuda()
+                test_data_seg = test_data_dict.pop('noncontrast_mask_tolerated').cuda()
+
+                
+                test_data_conhist = test_data_dict.pop('trans_hist').cuda()
+                test_data_nonconhist = test_data_dict.pop('input_hist').cuda()
+                test_data_arota = test_data_dict.pop('noncon_arota').cuda()
+                test_data_conarota = test_data_dict.pop('contrast_mask_tolerated').numpy()
+                test_trans_lumen_mask_tolerated = test_data_dict.pop('trans_lumen_mask_tolerated').cuda()
+                test_m_sdf = test_data_dict.pop('m_sdf').cuda()  
+                test_coarse_m_sdf = test_data_dict.pop('coarse_m_sdf').cuda()
+
+                cond_hist = None
+                if args.contrast_hist:
+                    cond_hist = test_data_conhist
+                elif args.noncontrast_hist:
+                    cond_hist = test_data_nonconhist
+
+                if args.cond_on_noncontrast_mask:
+                    cond = test_data_seg
+                else:
+                    cond = test_data_arota
+
+
+                img_true_all = np.zeros((test_data_input.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
+                config.score_model.image_size))
+                img_pred_all = np.zeros((test_data_input.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
+                        config.score_model.image_size))
+                trans_all = np.zeros( (test_data_input.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
+                        config.score_model.image_size))
+                contrast_arota_mask_all = np.zeros((test_data_input.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
+                        config.score_model.image_size))
+                noncontrast_arota_mask_all = np.zeros((test_data_input.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
+                        config.score_model.image_size))
+                x_all = np.zeros((test_data_input.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
+                        config.score_model.image_size))
+                predicted_mask_all = np.zeros((test_data_input.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
+                        config.score_model.image_size))
+                gt_mask_all = np.zeros((test_data_input.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
+                        config.score_model.image_size))
+
             
-            average_psnr_whole, average_psnr_crop, average_ssim_whole, average_ssim_crop, average_lpips_whole, average_lpips_crop, average_mse_whole, average_mse_crop = save_images_and_calculate_metrics(i,img_pred_all, img_true_all, trans_all,x_all,contrast_arota_mask_all, noncontrast_arota_mask_all, predicted_mask_all,gt_mask_all, output_folder_pred, num_sample)
-            avg_whole_psnr.append(average_psnr_whole)
-            avg_crop_psnr.append(average_psnr_crop)
-            avg_whole_ssim.append(average_ssim_whole)
-            avg_crop_ssim.append(average_ssim_crop)
-            avg_whole_lpips.append(average_lpips_whole)
-            avg_crop_lpips.append(average_lpips_crop)
-            avg_whole_mse.append(average_mse_whole)
-            avg_crop_mse.append(average_mse_crop)
-        elif args.model_name == 'diffusion_':
-            filename_mask = "mask_forward_"+args.experiment_name_forward+'_backward_'+args.experiment_name_backward+".pt"
-            filename_x0 = "cyclic_predict_"+args.experiment_name_forward+'_backward_'+args.experiment_name_backward+".pt"
-            with bf.BlobFile(bf.join(logger.get_dir(), filename_mask), "rb") as f:
-                tensor_load_mask = th.load(f)
-            with bf.BlobFile(bf.join(logger.get_dir(), filename_x0), "rb") as f:
-                tensor_load_xpred = th.load(f)
-            load_gt_repeat = np.expand_dims(img_true_all, axis=0).repeat(tensor_load_mask.shape[0], axis=0)
-            error_map = (np.abs(tensor_load_xpred.numpy() - load_gt_repeat)) ** 2
-            mean_error_map = np.sum(error_map * (1-tensor_load_mask.numpy()), 0) / np.sum((1-tensor_load_mask.numpy()), 0)
-            error_map = normalize(np.where(np.isnan(mean_error_map), 0, mean_error_map))
-    
+                if args.sdg_lumen_mask: 
+                    lumen = test_m_sdf
+                else:
+                    lumen = test_trans_lumen_mask_tolerated
+                
+
+            sample_fn = (
+                            diffusion.p_sample_loop
+            )
+            print("test_data_input",test_data_input.shape)
+            
+            # sample = sliding_window_inference(test_data_input,sample_fn,  model_forward, model_backward, model_kwargs, config, args,
+            #                      patch_size=128, stride=128, batch_size=32 )
+            
+            sample = sample_fn(
+                model_forward, model_backward, test_data_input, test_data_seg,cond_hist, cond,args.cond_on_lumen_mask,lumen,test_coarse_m_sdf,
+                (test_data_seg.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
+                config.score_model.image_size),
+                model_name=args.model_name,
+                clip_denoised=config.sampling.clip_denoised,  # is True, clip the denoised signal into [-1, 1].
+                model_kwargs=model_kwargs,  # reconstruction = True
+                eta=config.sampling.eta,
+                model_forward_name=args.experiment_name_forward,
+                model_backward_name=args.experiment_name_backward,
+                ddim=args.use_ddim
+
+            )
+            num_batch += 1
+            #sample_datach = sample[0].detach().cpu().numpy()
+            mask_datach = sample[1].detach().cpu().numpy()
+            weighted_datach = sample[2].detach().cpu().numpy()
+            x_datach = sample[0].detach().cpu().numpy()
+            sample_datach = x_datach*(test_data_seg.detach().cpu().numpy())
+            noncon_arota_mask = test_data_seg.detach().cpu().numpy()
+            con_arota_mask = test_data_conarota
+            predicted_mask = sample[4].detach().cpu().numpy()
+            
+
+            # Assume sample_datach and test_data_conarota are already loaded numpy arrays
+
+        
+
+
+
+            
+            test_data_seg_detach = test_data_seg.detach().cpu().numpy()
+            img_true_all= test_data_input.detach().cpu().numpy()
+            img_pred_all= sample_datach
+            trans_all=test_data_gt.detach().cpu().numpy()
+            contrast_arota_mask_all=con_arota_mask
+            noncontrast_arota_mask_all=noncon_arota_mask
+            x_all=x_datach
+            predicted_mask_all = predicted_mask
+            gt_mask_all= test_m_sdf.detach().cpu().numpy()
+
+            num_sample= test_data_input.shape[0]
+            logger.log("all the confidence maps from the testing set saved...")
+            if args.model_name == 'diffusion':
+            
+                error = (trans_all - img_pred_all) ** 2
+            
+                    
+                error = np.array(error)
+            
+                error_map = normalize(error)
+                output_folder_pred = "/mnt/data/data/evaluation/predict" +filename[:-3] + "timestep1000new"# Change to your actual folder
+            
+                # save_images(img_pred_all, img_true_all, trans_all,output_folder_pred, output_folder_true,output_folder_trans,num_sample)
+                
+                average_psnr_whole, average_psnr_crop, average_ssim_whole, average_ssim_crop, average_lpips_whole, average_lpips_crop, average_mse_whole, average_mse_crop = save_images_and_calculate_metrics(i,img_pred_all, img_true_all, trans_all,x_all,contrast_arota_mask_all, noncontrast_arota_mask_all, predicted_mask_all,gt_mask_all, output_folder_pred, num_sample)
+                avg_whole_psnr.append(average_psnr_whole)
+                avg_crop_psnr.append(average_psnr_crop)
+                avg_whole_ssim.append(average_ssim_whole)
+                avg_crop_ssim.append(average_ssim_crop)
+                avg_whole_lpips.append(average_lpips_whole)
+                avg_crop_lpips.append(average_lpips_crop)
+                avg_whole_mse.append(average_mse_whole)
+                avg_crop_mse.append(average_mse_crop)
+            elif args.model_name == 'diffusion_':
+                filename_mask = "mask_forward_"+args.experiment_name_forward+'_backward_'+args.experiment_name_backward+".pt"
+                filename_x0 = "cyclic_predict_"+args.experiment_name_forward+'_backward_'+args.experiment_name_backward+".pt"
+                with bf.BlobFile(bf.join(logger.get_dir(), filename_mask), "rb") as f:
+                    tensor_load_mask = th.load(f)
+                with bf.BlobFile(bf.join(logger.get_dir(), filename_x0), "rb") as f:
+                    tensor_load_xpred = th.load(f)
+                load_gt_repeat = np.expand_dims(img_true_all, axis=0).repeat(tensor_load_mask.shape[0], axis=0)
+                error_map = (np.abs(tensor_load_xpred.numpy() - load_gt_repeat)) ** 2
+                mean_error_map = np.sum(error_map * (1-tensor_load_mask.numpy()), 0) / np.sum((1-tensor_load_mask.numpy()), 0)
+                error_map = normalize(np.where(np.isnan(mean_error_map), 0, mean_error_map))
+        
+        except Exception as e:
+            print(f"Error in batch {i}: {e}")
+            continue
+
 def reseed_random(seed):
     random.seed(seed)  # python random generator
     np.random.seed(seed)  # numpy random generator
