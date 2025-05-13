@@ -404,44 +404,7 @@ class GaussianDiffusion:
             updated_mask_1 = updated_mask_1.byte()
    
 
-        # img_pil = TF.to_pil_image(updated_mask_1)
-        # img_pil.save("slice_11.png")
 
-        # updated_mask_1 = model_output[1, :, :, :].squeeze(0) 
-        # # If it's a float tensor (e.g. in [0,1]), scale to [0,255]
-        # if updated_mask_1.dtype == th.float32 or updated_mask_1.max() <= 1.0:
-        #     updated_mask_1 = (updated_mask_1 * 255).clamp(0, 255).byte()
-        # else:
-        #     updated_mask_1 = updated_mask_1.byte()
-   
-
-        # img_pil = TF.to_pil_image(updated_mask_1)
-        # img_pil.save("slice_21.png")
-
-        # updated_mask_1 = coarse_lumen_mask[1, :, :, :].squeeze(0) 
-        # # If it's a float tensor (e.g. in [0,1]), scale to [0,255]
-        # if updated_mask_1.dtype == th.float32 or updated_mask_1.max() <= 1.0:
-        #     updated_mask_1 = (updated_mask_1 * 255).clamp(0, 255).byte()
-        # else:
-        #     updated_mask_1 = updated_mask_1.byte()
-   
-
-        # img_pil = TF.to_pil_image(updated_mask_1)
-        # img_pil.save("slice_01.png")
-
-        # updated_mask_1 = lumen_mask[1, :, :, :].squeeze(0) 
-        # # If it's a float tensor (e.g. in [0,1]), scale to [0,255]
-        # if updated_mask_1.dtype == th.float32 or updated_mask_1.max() <= 1.0:
-        #     updated_mask_1 = (updated_mask_1 * 255).clamp(0, 255).byte()
-        # else:
-        #     updated_mask_1 = updated_mask_1.byte()
-   
-
-        # img_pil = TF.to_pil_image(updated_mask_1)
-        # img_pil.save("slice_4.png")
-       
-        # model_output = model(x_in, **model_kwargs)
-        # model_output = model(x, self._scale_timesteps(t), **model_kwargs)
 
         if self.model_var_type in [ModelVarType.LEARNED, ModelVarType.LEARNED_RANGE]:
             assert model_output.shape == (B, C * 2, *x.shape[2:])
@@ -961,7 +924,7 @@ class GaussianDiffusion:
 
 
 
-    def training_losses(self,  model, input_img, trans_img, aneurysm_mask_contrast,aneurysm_mask_noncontrast,noncon_arota_hist,con_arota_hist,have_con_arota_hist,have_noncon_arota_hist,cond_on_noncontrast_mask, cond_on_contrast_mask,square_mask, lumen_mask, cond_on_lumen_mask,coarse_lumen_mask, model_name, t,iteration, x_start_t=None, model_kwargs=None, noise=None):
+    def training_losses(self,  model, input_img, trans_img, aneurysm_mask_contrast,aneurysm_mask_noncontrast,noncon_arota_hist,con_arota_hist,have_con_arota_hist,have_noncon_arota_hist,cond_on_noncontrast_mask, cond_on_contrast_mask,square_mask, lumen_mask, cond_on_lumen_mask,coarse_lumen_mask, mask_loss_weight,model_name, t,iteration, x_start_t=None, model_kwargs=None, noise=None):
         """
         Compute training losses for a single timestep.
 
@@ -1125,7 +1088,7 @@ class GaussianDiffusion:
         
         # terms["loss"] = -0.01*mask_logits.var(dim=1).mean() + mean_flat(loss) -0.05*check_empty_masks(mask_logits)  #mask5noncon2con_losss wandb colorful_fire
         mean_flat_loss = mean_flat(loss)
-        terms["loss"] = mean_flat_loss + mask_loss
+        terms["loss"] = mean_flat_loss + mask_loss_weight*mask_loss
        
 
         

@@ -215,6 +215,7 @@ class TrainLoop:
             lumen_mask = cond_lumen,
             cond_on_lumen_mask = self.args.cond_on_lumen_mask,
             coarse_lumen_mask = self.coarse_m_sdf,
+            mask_loss_weight = self.args.maskloss_weight,
             model_name = self.args.model_name,
             t=self.t,
             iteration=iteration,
