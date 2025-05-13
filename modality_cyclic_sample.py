@@ -343,7 +343,7 @@ def save_images_and_calculate_metrics(batch_index, img_pred_all, img_true_all, t
 
     
 
-    return average_psnr_whole, average_psnr_crop, average_ssim_whole, average_ssim_crop, average_lpips_whole, average_lpips_crop, average_mse_whole, average_mse_crop
+    return average_psnr_whole, average_psnr_crop, average_ssim_whole, average_ssim_crop, average_lpips_whole, average_lpips_crop, average_mse_whole, average_mse_crop, average_dice
 
 
 
@@ -429,6 +429,7 @@ def main(args):
     avg_crop_lpips = []
     avg_whole_mse = []
     avg_crop_mse = []
+    avg_dice = []
     # brain_mask_all = np.zeros((len(test_loader.dataset), config.score_model.num_input_channels, config.score_model.image_size, config.score_model.image_size))
     # test_data_seg_all = np.zeros((len(test_loader.dataset), config.score_model.num_input_channels,
     #                            config.score_model.image_size, config.score_model.image_size))
@@ -569,7 +570,7 @@ def main(args):
             
                 # save_images(img_pred_all, img_true_all, trans_all,output_folder_pred, output_folder_true,output_folder_trans,num_sample)
                 
-                average_psnr_whole, average_psnr_crop, average_ssim_whole, average_ssim_crop, average_lpips_whole, average_lpips_crop, average_mse_whole, average_mse_crop = save_images_and_calculate_metrics(i,img_pred_all, img_true_all, trans_all,x_all,contrast_arota_mask_all, noncontrast_arota_mask_all, predicted_mask_all,gt_mask_all, output_folder_pred, num_sample)
+                average_psnr_whole, average_psnr_crop, average_ssim_whole, average_ssim_crop, average_lpips_whole, average_lpips_crop, average_mse_whole, average_mse_crop, average_dice = save_images_and_calculate_metrics(i,img_pred_all, img_true_all, trans_all,x_all,contrast_arota_mask_all, noncontrast_arota_mask_all, predicted_mask_all,gt_mask_all, output_folder_pred, num_sample)
                 avg_whole_psnr.append(average_psnr_whole)
                 avg_crop_psnr.append(average_psnr_crop)
                 avg_whole_ssim.append(average_ssim_whole)
@@ -578,6 +579,7 @@ def main(args):
                 avg_crop_lpips.append(average_lpips_crop)
                 avg_whole_mse.append(average_mse_whole)
                 avg_crop_mse.append(average_mse_crop)
+                avg_dice.append(average_dice)
             elif args.model_name == 'diffusion_':
                 filename_mask = "mask_forward_"+args.experiment_name_forward+'_backward_'+args.experiment_name_backward+".pt"
                 filename_x0 = "cyclic_predict_"+args.experiment_name_forward+'_backward_'+args.experiment_name_backward+".pt"
@@ -593,6 +595,29 @@ def main(args):
         except Exception as e:
             print(f"Error in batch {i}: {e}")
             continue
+
+
+    average_psnr_whole = np.mean(avg_whole_psnr)
+    average_psnr_crop = np.mean(avg_crop_psnr)
+    average_ssim_whole = np.mean(avg_whole_ssim)
+    average_ssim_crop = np.mean(avg_crop_ssim)
+    average_lpips_whole = np.mean(avg_whole_lpips)
+    average_lpips_crop = np.mean(avg_crop_lpips)
+    average_mse_whole = np.mean(avg_whole_mse)
+    average_mse_crop = np.mean(avg_crop_mse)
+    average_dice = np.mean(avg_dice)
+
+
+    
+    print(f"Average PSNR (Pred vs True): {average_psnr_whole:.2f} dB")
+    print(f"Average PSNR (Cropped): {average_psnr_crop:.2f} dB")
+    print(f"Average SSIM (Whole): {average_ssim_whole:.4f}")
+    print(f"Average SSIM (Cropped): {average_ssim_crop:.4f}")
+    print(f"Average LPIPS (Whole): {average_lpips_whole:.4f}")
+    print(f"Average LPIPS (Cropped): {average_lpips_crop:.4f}")
+    print(f"Average MSE (Whole): {average_mse_whole:.6f}")
+    print(f"Average MSE (Cropped): {average_mse_crop:.6f}")
+    print(f"Average Dice: {average_dice:.6f}")
 
 def reseed_random(seed):
     random.seed(seed)  # python random generator
