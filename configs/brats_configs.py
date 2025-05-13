@@ -56,7 +56,7 @@ def get_default_configs():
     training_score.weight_decay = 0.00
     training_score.lr_decay_steps = 150000
     training_score.lr_decay_factor = 0.5
-    training_score.batch_size = 4
+    training_score.batch_size = 1
     training_score.ema_rate = "0.9999"  # comma-separated list of EMA values
     training_score.log_interval = 100
     training_score.save_interval = 5000

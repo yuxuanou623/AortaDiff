@@ -140,7 +140,10 @@ if __name__ == "__main__":
     parser.add_argument("--continue_step", help="brats", type=str, default='400000')
     parser.add_argument("--cond_on_lumen_mask", help="brats",  action="store_true")
     parser.add_argument("--sdg_lumen_mask", help="brats",  action="store_true")
-    parser.add_argument("--maskloss_weight", help="fraction of GPU memory to use, like 0.5", type=float, default=1.0)
+    parser.add_argument("--add_mask_mse_loss", help="fraction of GPU memory to use, like 0.5", action="store_true")
+    parser.add_argument("--mask_mse_loss_weight", help="fraction of GPU memory to use, like 0.5", type=float, default=1.0)
+    parser.add_argument("--add_mask_lpips_loss", help="fraction of GPU memory to use, like 0.5", action="store_true")
+    parser.add_argument("--mask_lpips_weight", help="fraction of GPU memory to use, like 0.5", type=float, default=1.0)
     
 
     args = parser.parse_args()

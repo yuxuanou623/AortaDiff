@@ -924,7 +924,7 @@ class GaussianDiffusion:
 
 
 
-    def training_losses(self,  model, input_img, trans_img, aneurysm_mask_contrast,aneurysm_mask_noncontrast,noncon_arota_hist,con_arota_hist,have_con_arota_hist,have_noncon_arota_hist,cond_on_noncontrast_mask, cond_on_contrast_mask,square_mask, lumen_mask, cond_on_lumen_mask,coarse_lumen_mask, mask_loss_weight,model_name, t,iteration, x_start_t=None, model_kwargs=None, noise=None):
+    def training_losses(self,  model, input_img, trans_img, aneurysm_mask_contrast,aneurysm_mask_noncontrast,noncon_arota_hist,con_arota_hist,have_con_arota_hist,have_noncon_arota_hist,cond_on_noncontrast_mask, cond_on_contrast_mask,square_mask, lumen_mask, cond_on_lumen_mask,coarse_lumen_mask, mask_mse_loss,mask_loss_weight, mask_lpips_loss, mask_lpips_weight, model_name, t,iteration, x_start_t=None, model_kwargs=None, noise=None):
         """
         Compute training losses for a single timestep.
 
@@ -1069,7 +1069,7 @@ class GaussianDiffusion:
             """
             return th.relu(-y)  # Equivalent to max(-y, 0)
         loss_func = nn.MSELoss(reduction='mean').to(x_t.device)
-        mask_loss = loss_func(updated_mask,lumen_mask)
+        mask_mse_loss_value = loss_func(updated_mask,lumen_mask)
         def dice_score_from_sdf(sdf1, sdf2, eps=1e-5):
             # Convert SDFs to binary masks: inside is where sdf <= 0
             mask1 = (sdf1 <= 0).float()
@@ -1088,7 +1088,34 @@ class GaussianDiffusion:
         
         # terms["loss"] = -0.01*mask_logits.var(dim=1).mean() + mean_flat(loss) -0.05*check_empty_masks(mask_logits)  #mask5noncon2con_losss wandb colorful_fire
         mean_flat_loss = mean_flat(loss)
-        terms["loss"] = mean_flat_loss + mask_loss_weight*mask_loss
+        if mask_mse_loss:
+            mse_mask_weight = mask_loss_weight
+        else:
+            mse_mask_weight = 0
+
+        if mask_lpips_loss:
+            lpips_mask_weight = mask_lpips_weight
+
+            cropped_mask_pred = updated_mask*square_mask
+
+
+            cropped_mask_pred_lpips = (cropped_mask_pred).repeat(1,3,1,1)
+            lumen_mask_lpipis = (lumen_mask*square_mask).repeat(1,3,1,1)
+
+            lpips_model = lpips.LPIPS(pretrained=True, pnet_rand=False, net='squeeze', eval_mode=True, spatial=True, lpips=True).to('cuda') 
+            mask_lpips_loss_value = lpips_model(cropped_mask_pred_lpips, lumen_mask_lpipis)
+
+        else:
+            lpips_mask_weight =0
+            mask_lpips_loss_value = 0
+
+        print("lpips_mask_weight",lpips_mask_weight)
+        print("mse_mask_weight",mse_mask_weight)
+
+        
+
+        terms["loss"] = mean_flat_loss + mse_mask_weight*mask_mse_loss_value + lpips_mask_weight*mean_flat(mask_lpips_loss_value)
+      
        
 
         
@@ -1109,7 +1136,7 @@ class GaussianDiffusion:
         "updatedmask": wandb.Image(updated_mask[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
         "lumenmask": wandb.Image(lumen_mask[max_index, :, :, :].squeeze(0).detach().cpu().numpy()), 
         "lpips loss":mean_flat_loss.mean().item(),
-        "mask_loss":mask_loss.mean().item(),
+        "mask_loss":(mse_mask_weight*mask_mse_loss_value + lpips_mask_weight*mean_flat(mask_lpips_loss_value)).mean().item(),
         "dice":dice_score.item()},step=iteration)
        
 
