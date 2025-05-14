@@ -144,6 +144,7 @@ if __name__ == "__main__":
     parser.add_argument("--mask_mse_loss_weight", help="fraction of GPU memory to use, like 0.5", type=float, default=1.0)
     parser.add_argument("--add_mask_lpips_loss", help="fraction of GPU memory to use, like 0.5", action="store_true")
     parser.add_argument("--mask_lpips_weight", help="fraction of GPU memory to use, like 0.5", type=float, default=1.0)
+    parser.add_argument("--kendallloss", help="fraction of GPU memory to use, like 0.5", action="store_true")
     
 
     args = parser.parse_args()

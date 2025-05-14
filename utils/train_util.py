@@ -10,6 +10,7 @@ import torch.distributed as dist
 from torch.optim import AdamW
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
+import torch.nn as nn 
 
 from utils import logger
 from utils.fp16_util import MixedPrecisionTrainer
@@ -91,6 +92,7 @@ class TrainLoop:
         self.resume_step = 0
         self.sync_cuda = th.cuda.is_available()
         self.current_loss = 0
+        self.log_vars = nn.Parameter(th.zeros(2))
 
         self.mp_trainer = MixedPrecisionTrainer(
             model=self.model,
@@ -98,9 +100,21 @@ class TrainLoop:
             fp16_scale_growth=fp16_scale_growth,
         )
 
-        self.opt = AdamW(
-            self.mp_trainer.master_params, lr=self.lr, weight_decay=self.weight_decay
-        )
+        if not self.args.kendallloss:
+
+            self.opt = AdamW(
+                self.mp_trainer.master_params, lr=self.lr, weight_decay=self.weight_decay
+            )
+        else:
+            self.opt = AdamW(
+        [
+            {"params": self.mp_trainer.master_params},       # model weights
+            {"params": [self.log_vars], "weight_decay": 0.0},
+        ],
+        lr=self.lr,
+        weight_decay=self.weight_decay
+)
+
 
         self.ema_params = [
             copy.deepcopy(self.mp_trainer.master_params)
@@ -219,6 +233,8 @@ class TrainLoop:
             mask_loss_weight = self.args.mask_mse_loss_weight,
             mask_lpips_loss = self.args.add_mask_lpips_loss,
             mask_lpips_weight = self.args.mask_lpips_weight,
+            loss_var = self.log_vars,
+            use_kendal_loss = self.args.kendallloss,
             model_name = self.args.model_name,
             t=self.t,
             iteration=iteration,

@@ -924,7 +924,7 @@ class GaussianDiffusion:
 
 
 
-    def training_losses(self,  model, input_img, trans_img, aneurysm_mask_contrast,aneurysm_mask_noncontrast,noncon_arota_hist,con_arota_hist,have_con_arota_hist,have_noncon_arota_hist,cond_on_noncontrast_mask, cond_on_contrast_mask,square_mask, lumen_mask, cond_on_lumen_mask,coarse_lumen_mask, mask_mse_loss,mask_loss_weight, mask_lpips_loss, mask_lpips_weight, model_name, t,iteration, x_start_t=None, model_kwargs=None, noise=None):
+    def training_losses(self,  model, input_img, trans_img, aneurysm_mask_contrast,aneurysm_mask_noncontrast,noncon_arota_hist,con_arota_hist,have_con_arota_hist,have_noncon_arota_hist,cond_on_noncontrast_mask, cond_on_contrast_mask,square_mask, lumen_mask, cond_on_lumen_mask,coarse_lumen_mask, mask_mse_loss,mask_loss_weight, mask_lpips_loss, mask_lpips_weight, loss_var,use_kendal_loss, model_name, t,iteration, x_start_t=None, model_kwargs=None, noise=None):
         """
         Compute training losses for a single timestep.
 
@@ -1109,12 +1109,18 @@ class GaussianDiffusion:
             lpips_mask_weight =0
             mask_lpips_loss_value = 0
 
-        print("lpips_mask_weight",lpips_mask_weight)
-        print("mse_mask_weight",mse_mask_weight)
+        
 
         
 
-        terms["loss"] = mean_flat_loss + mse_mask_weight*mask_mse_loss_value + lpips_mask_weight*mean_flat(mask_lpips_loss_value)
+        
+        if use_kendal_loss:
+            mask_loss = mask_mse_loss_value
+            terms["loss"] = 0.5*th.exp(-loss_var[0])*mean_flat_loss + 0.5*loss_var[0]+0.5*th.exp(-loss_var[1])*mask_mse_loss_value + 0.5*loss_var[1]
+        else:
+            mask_loss =  mse_mask_weight*mask_mse_loss_value + lpips_mask_weight*mean_flat(mask_lpips_loss_value)
+
+            terms["loss"] = mean_flat_loss + mse_mask_weight*mask_mse_loss_value + lpips_mask_weight*mean_flat(mask_lpips_loss_value)
       
        
 
@@ -1136,8 +1142,10 @@ class GaussianDiffusion:
         "updatedmask": wandb.Image(updated_mask[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
         "lumenmask": wandb.Image(lumen_mask[max_index, :, :, :].squeeze(0).detach().cpu().numpy()), 
         "lpips loss":mean_flat_loss.mean().item(),
-        "mask_loss":(mse_mask_weight*mask_mse_loss_value + lpips_mask_weight*mean_flat(mask_lpips_loss_value)).mean().item(),
-        "dice":dice_score.item()},step=iteration)
+        "mask_loss":mask_loss.mean().item(),
+        "dice":dice_score.item(),
+        "loss_var1": loss_var[0].item(),
+        "loss_var2": loss_var[1].item()},step=iteration)
        
 
         return terms
