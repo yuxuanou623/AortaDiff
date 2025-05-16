@@ -1107,7 +1107,7 @@ class GaussianDiffusion:
 
         else:
             lpips_mask_weight =0
-            mask_lpips_loss_value = 0
+            mask_lpips_loss_value =th.tensor([0.0] )
 
         
 

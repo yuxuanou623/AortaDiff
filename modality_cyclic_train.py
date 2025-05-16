@@ -13,7 +13,7 @@ from configs import get_config
 from utils import logger
 from datasets import loader
 from models.resample import create_named_schedule_sampler
-from utils.script_util import create_gaussian_diffusion, create_score_model
+from utils.script_util import create_gaussian_diffusion, create_score_model, create_score_model_dual_decoder
 from utils.train_util import TrainLoop
 import wandb
 
@@ -51,7 +51,10 @@ def main(args):
     contrast_hist = args.contrast_hist
     noncontrast_hist = args.noncontrast_hist
     diffusion = create_gaussian_diffusion(config, timestep_respacing=False)
-    model = create_score_model(config, image_level_cond,contrast_hist or noncontrast_hist , args.cond_on_lumen_mask )
+    if not args.use_dualdecoder_unet:
+        model = create_score_model(config, image_level_cond,contrast_hist or noncontrast_hist , args.cond_on_lumen_mask )
+    else:
+        model = create_score_model_dual_decoder(config, image_level_cond,contrast_hist or noncontrast_hist , args.cond_on_lumen_mask )
 
     if args.continue_training:
 
@@ -145,7 +148,7 @@ if __name__ == "__main__":
     parser.add_argument("--add_mask_lpips_loss", help="fraction of GPU memory to use, like 0.5", action="store_true")
     parser.add_argument("--mask_lpips_weight", help="fraction of GPU memory to use, like 0.5", type=float, default=1.0)
     parser.add_argument("--kendallloss", help="fraction of GPU memory to use, like 0.5", action="store_true")
-    
+    parser.add_argument("--use_dualdecoder_unet", help="fraction of GPU memory to use, like 0.5", action="store_true")
 
     args = parser.parse_args()
     main(args)
