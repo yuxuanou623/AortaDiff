@@ -18,7 +18,7 @@ import torch  # If working with PyTorch tensors
 from datasets import loader
 from configs import get_config
 from utils import logger
-from utils.script_util import create_gaussian_diffusion, create_score_model
+from utils.script_util import create_gaussian_diffusion, create_score_model, create_score_model_dual_decoder
 from utils.binary_metrics import assd_metric, sensitivity_metric, precision_metric
 sys.path.append(str(Path.cwd()))
 from tqdm import tqdm
@@ -382,7 +382,12 @@ def main(args):
     else:
         raise Exception("Model name does exit")
     diffusion = create_gaussian_diffusion(config, args.timestep_respacing)
-    model_forward = create_score_model(config, image_level_cond_forward, args.contrast_hist or args.noncontrast_hist, args.cond_on_lumen_mask )
+
+    if not args.use_dualdecoder_unet:
+        model_forward = create_score_model(config, image_level_cond_forward, args.contrast_hist or args.noncontrast_hist, args.cond_on_lumen_mask )
+    else:
+        model_forward = create_score_model_dual_decoder(config, image_level_cond_forward,args.contrast_hist or args.noncontrast_hist , args.cond_on_lumen_mask )
+
     model_backward = create_score_model(config, image_level_cond_backward)
 
     filename = args.modelfilename
@@ -648,6 +653,7 @@ if __name__ == "__main__":
     parser.add_argument("--cond_on_noncontrast_mask", help="a npy to filter data based on pixel difference and mask difference", action="store_true")
     parser.add_argument("--cond_on_lumen_mask", help="brats",  action="store_true")
     parser.add_argument("--sdg_lumen_mask", help="brats",  action="store_true")
+    parser.add_argument("--use_dualdecoder_unet", help="fraction of GPU memory to use, like 0.5", action="store_true")
 
     args = parser.parse_args()
     print(args.dataset)
