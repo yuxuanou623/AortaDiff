@@ -25,6 +25,7 @@ class TrainLoop:
             model,
             diffusion,
             data,
+            partialdata,
             val_data,
             batch_size,
             lr,
@@ -52,6 +53,7 @@ class TrainLoop:
         self.model = model
         self.diffusion = diffusion
         self.data = data
+        self.partialdata = partialdata
         self.val_data = val_data
         self.batch_size = batch_size
         self.lr = lr
@@ -121,6 +123,60 @@ class TrainLoop:
             for _ in range(len(self.ema_rate))
         ]
 
+    def run_loop_partial(self):
+        # Define data loaders
+        
+
+        warmup_steps = 2500 # 1 full epoch of full-label data
+        alternating = False  # Phase indicator
+
+        while (
+            not self.lr_decay_steps
+            or self.step + self.resume_step < self.iterations
+        ):
+            if self.step < warmup_steps:
+                # === Phase 1: Full-label warmup ===
+                data = next(self.data)
+                
+                self.run_step(data, self.step, tag='full')
+
+            else:
+                # === Phase 2: Alternating full and partial batches ===
+                alternating = True
+                if self.step % 2 == 0:
+                    # Even step: full
+                    data = next(self.data)
+                    
+                    self.run_step(data, self.step, tag='full')
+                else:
+                    # Odd step: partial
+                    
+                    data = next(self.partialdata)
+                    
+                    self.run_step(data, self.step, tag='partial')
+
+            # === Logging and saving ===
+            if self.step % self.save_interval == 0:
+                self.save()
+            if self.step % self.log_interval == 0:
+                self.time_iter_end = time.time()
+                if self.time_iter_start == 0:
+                    self.time_iter = 0
+                else:
+                    self.time_iter = self.time_iter_end - self.time_iter_start
+                self.log_step()
+                logger.dumpkvs()
+                self.time_iter_start = time.time()
+            if self.step % self.val_interval == 0:
+                self.run_validation()
+
+            self.step += 1
+
+        # Save last checkpoint
+        if (self.step - 1) % self.save_interval != 0:
+            self.save()
+
+
     def run_loop(self):
         while (
                 not self.lr_decay_steps
@@ -153,15 +209,15 @@ class TrainLoop:
         print(type(self.val_data))
         for i, val_data_dict in tqdm(enumerate(self.val_data), total = len(self.val_data)):
             
-            val_loss = self.run_step(val_data_dict, self.step, phase="val")
+            val_loss = self.run_step(val_data_dict, self.step, tag = "full",phase="val")
            
             val_losses.append(val_loss.detach().cpu().numpy())
         avg_val_loss = np.mean(val_losses)
         self.writer.add_scalar('Val_Loss', avg_val_loss, self.step)
         print(f"Validation Loss at step {self.step}: {avg_val_loss}")
 
-    def run_step(self, data_dict, iteration, phase="train"):
-        self.forward_backward(data_dict, iteration, phase=phase)
+    def run_step(self, data_dict, iteration, tag, phase="train"):
+        self.forward_backward(data_dict, iteration, tag, phase=phase)
         if phase == "train":
             took_step = self.mp_trainer.optimize(self.opt)
             if took_step:
@@ -170,7 +226,7 @@ class TrainLoop:
         return self.current_loss
 
 
-    def forward_backward(self, data_dict, iteration, phase: str = "train"):
+    def forward_backward(self, data_dict, iteration, tag: str = "full", phase: str = "train"):
 
         if self.recursive_flag == 0:
             self.contrast = data_dict.pop("contrast").to(self.device)
@@ -182,15 +238,23 @@ class TrainLoop:
             self.noncon_arota_hist = data_dict.pop("trans_hist").to(self.device)
             self.con_arota_hist = data_dict.pop("input_hist").to(self.device)
             self.square_mask = data_dict.pop("square_mask").to(self.device)
-            self.lumen_mask = data_dict.pop("trans_lumen_mask_tolerated").to(self.device)
+            
 
-            self.coarse_m_sdf = data_dict.pop("coarse_m_sdf").to(self.device)
-            self.m_sdf = data_dict.pop("m_sdf").to(self.device)
+            self.coarse_m_sdf = None
+            
 
-            if self.args.sdg_lumen_mask:
-                cond_lumen = self.m_sdf
-            else:
-                cond_lumen = self.lumen_mask
+            if tag == 'full':
+                self.lumen_mask = data_dict.pop("trans_lumen_mask_tolerated").to(self.device)
+                self.m_sdf = data_dict.pop("m_sdf").to(self.device)
+                if self.args.sdg_lumen_mask:
+                    cond_lumen = self.m_sdf
+                else:
+                    cond_lumen = self.lumen_mask
+
+            elif tag == 'partial': 
+                self.lumen_mask = None
+                self.m_sdf  =None
+                cond_lumen = None
 
 
             # self.batch_image_seg = self.batch_image_seg.to(self.device)  # seg
@@ -215,6 +279,7 @@ class TrainLoop:
         compute_losses = functools.partial(
             self.diffusion.training_losses,
             model=self.model,
+            tag = tag,
             input_img=self.noncon_arota,
             trans_img=self.contrast,
             aneurysm_mask_contrast = self.contrast_mask_tolerated,

@@ -83,10 +83,12 @@ def main(args):
     
 
     filter_train = args.filter_train
+    filter_partial = args.filter_partial
     filter_val = args.filter_val
 
     logger.log("creating data loader...")
     train_loader = loader.get_data_loader(args.dataset, args.train_data_dir, config, input,  trans,filter_train, split_set='train', generator=True)
+    train_loader_partiallabel = loader.get_data_loader(args.dataset, args.train_data_dir, config, input,  trans,filter_partial, split_set='train_partial', generator=True)
     val_loader = loader.get_data_loader(args.dataset, args.val_data_dir, config, input,  trans,filter_val, split_set='val', generator=False)
     time_load_end = time.time()
     time_load = time_load_end - time_load_start
@@ -98,6 +100,7 @@ def main(args):
         model=model,
         diffusion=diffusion,
         data=train_loader,
+        partialdata = train_loader_partiallabel,
         val_data = val_loader,
         batch_size=config.score_model.training.batch_size,
         lr=config.score_model.training.lr,
@@ -119,7 +122,7 @@ def main(args):
         use_ddim=False,
         device=device,
         args=args
-    ).run_loop()
+    ).run_loop_partial()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -133,6 +136,7 @@ if __name__ == "__main__":
     parser.add_argument("--experiment_name", help="model saving file name", type=str, default='None')
     parser.add_argument("--model_name", help="translated model: unet or diffusion", type=str, default='diffusion')
     parser.add_argument("--filter_train", help="a npy to filter data based on pixel difference and mask difference", type=str, default='/mnt/data/data/OxAAA/train/normalized/train_with_lumenmask_filtered.npy')
+    parser.add_argument("--filter_partial", help="a npy to filter data based on pixel difference and mask difference", type=str, default='/mnt/data/data/OxAAA/train/normalized/partial.npy')
     parser.add_argument("--filter_val", help="a npy to filter data based on pixel difference and mask difference", type=str, default='/mnt/data/data/OxAAA/train/normalized/val_with_lumenmask_filtered.npy')
     parser.add_argument("--contrast_hist", help="a npy to filter data based on pixel difference and mask difference", action="store_true")
     parser.add_argument("--noncontrast_hist", help="a npy to filter data based on pixel difference and mask difference", action="store_true")
@@ -143,7 +147,7 @@ if __name__ == "__main__":
     parser.add_argument("--continue_step", help="brats", type=str, default='400000')
     parser.add_argument("--cond_on_lumen_mask", help="brats",  action="store_true")
     parser.add_argument("--sdg_lumen_mask", help="brats",  action="store_true")
-    parser.add_argument("--add_mask_mse_loss", help="fraction of GPU memory to use, like 0.5", action="store_true")
+    parser.add_argument("--add_mask_mse_loss", help="whether calculate mask mse loss", action="store_true")
     parser.add_argument("--mask_mse_loss_weight", help="fraction of GPU memory to use, like 0.5", type=float, default=1.0)
     parser.add_argument("--add_mask_lpips_loss", help="fraction of GPU memory to use, like 0.5", action="store_true")
     parser.add_argument("--mask_lpips_weight", help="fraction of GPU memory to use, like 0.5", type=float, default=1.0)

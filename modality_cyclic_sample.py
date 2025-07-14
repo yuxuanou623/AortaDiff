@@ -474,7 +474,7 @@ def main(args):
                 test_data_conarota = test_data_dict.pop('contrast_mask_tolerated').numpy()
                 test_trans_lumen_mask_tolerated = test_data_dict.pop('trans_lumen_mask_tolerated').cuda()
                 test_m_sdf = test_data_dict.pop('m_sdf').cuda()  
-                test_coarse_m_sdf = test_data_dict.pop('coarse_m_sdf').cuda()
+                # test_coarse_m_sdf = test_data_dict.pop('coarse_m_sdf').cuda()
 
                 cond_hist = None
                 if args.contrast_hist:
@@ -521,7 +521,7 @@ def main(args):
             #                      patch_size=128, stride=128, batch_size=32 )
             
             sample = sample_fn(
-                model_forward, model_backward, test_data_input, test_data_seg,cond_hist, cond,args.cond_on_lumen_mask,lumen,test_coarse_m_sdf,
+                model_forward, model_backward, test_data_input, test_data_seg,cond_hist, cond,args.cond_on_lumen_mask,lumen,
                 (test_data_seg.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
                 config.score_model.image_size),
                 model_name=args.model_name,

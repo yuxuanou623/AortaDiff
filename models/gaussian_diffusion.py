@@ -613,7 +613,6 @@ class GaussianDiffusion:
             cond,
             cond_on_lumen_mask,
             lumen_mask,
-            test_coarse_m_sdf,
             shape,
             model_name=None,
             clip_denoised=True,
@@ -652,7 +651,6 @@ class GaussianDiffusion:
                 cond,
                 cond_on_lumen_mask,
                 lumen_mask,
-                test_coarse_m_sdf,
                 shape,
                 model_name=model_name,
                 clip_denoised=clip_denoised,
@@ -679,7 +677,6 @@ class GaussianDiffusion:
             cond,
             cond_on_lumen_mask,
             lumen_mask,
-            test_coarse_m_sdf,
             shape,
             model_name=None,
             clip_denoised=True,
@@ -713,7 +710,8 @@ class GaussianDiffusion:
             noise = th.randn(*shape, device=device)
             
             img_forward = noise.cuda()
-            mask_forward = test_coarse_m_sdf
+            # mask_forward = test_coarse_m_sdf
+            mask_forward = None
 
             masks_all = []
             if True:
@@ -924,7 +922,7 @@ class GaussianDiffusion:
 
 
 
-    def training_losses(self,  model, input_img, trans_img, aneurysm_mask_contrast,aneurysm_mask_noncontrast,noncon_arota_hist,con_arota_hist,have_con_arota_hist,have_noncon_arota_hist,cond_on_noncontrast_mask, cond_on_contrast_mask,square_mask, lumen_mask, cond_on_lumen_mask,coarse_lumen_mask, mask_mse_loss,mask_loss_weight, mask_lpips_loss, mask_lpips_weight, loss_var,use_kendal_loss, model_name, t,iteration, x_start_t=None, model_kwargs=None, noise=None):
+    def training_losses(self,  model, tag, input_img, trans_img, aneurysm_mask_contrast,aneurysm_mask_noncontrast,noncon_arota_hist,con_arota_hist,have_con_arota_hist,have_noncon_arota_hist,cond_on_noncontrast_mask, cond_on_contrast_mask,square_mask, lumen_mask, cond_on_lumen_mask,coarse_lumen_mask, mask_mse_loss,mask_loss_weight, mask_lpips_loss, mask_lpips_weight, loss_var,use_kendal_loss, model_name, t,iteration, x_start_t=None, model_kwargs=None, noise=None):
         """
         Compute training losses for a single timestep.
 
@@ -1069,7 +1067,7 @@ class GaussianDiffusion:
             """
             return th.relu(-y)  # Equivalent to max(-y, 0)
         loss_func = nn.MSELoss(reduction='mean').to(x_t.device)
-        mask_mse_loss_value = loss_func(updated_mask,lumen_mask)
+        
         def dice_score_from_sdf(sdf1, sdf2, eps=1e-5):
             # Convert SDFs to binary masks: inside is where sdf <= 0
             mask1 = (sdf1 <= 0).float()
@@ -1081,47 +1079,52 @@ class GaussianDiffusion:
             # Avoid division by zero
             dice = (2.0 * intersection + eps) / (union + eps)
             return dice
-        if iteration % 200 ==0:
-            dice_score = dice_score_from_sdf(updated_mask, lumen_mask)
+        if tag == 'full':
+            mask_mse_loss_value = loss_func(updated_mask,lumen_mask)
+            if iteration % 200 ==0:
+                dice_score = dice_score_from_sdf(updated_mask, lumen_mask)
            
 
         
         # terms["loss"] = -0.01*mask_logits.var(dim=1).mean() + mean_flat(loss) -0.05*check_empty_masks(mask_logits)  #mask5noncon2con_losss wandb colorful_fire
-        mean_flat_loss = mean_flat(loss)
-        if mask_mse_loss:
-            mse_mask_weight = mask_loss_weight
-        else:
-            mse_mask_weight = 0
+            mean_flat_loss = mean_flat(loss)
+            if mask_mse_loss:
+                mse_mask_weight = mask_loss_weight
+            else:
+                mse_mask_weight = 0
 
-        if mask_lpips_loss:
-            lpips_mask_weight = mask_lpips_weight
+            if mask_lpips_loss:
+                lpips_mask_weight = mask_lpips_weight
 
-            cropped_mask_pred = updated_mask*square_mask
+                cropped_mask_pred = updated_mask*square_mask
 
 
-            cropped_mask_pred_lpips = (cropped_mask_pred).repeat(1,3,1,1)
-            lumen_mask_lpipis = (lumen_mask*square_mask).repeat(1,3,1,1)
+                cropped_mask_pred_lpips = (cropped_mask_pred).repeat(1,3,1,1)
+                lumen_mask_lpipis = (lumen_mask*square_mask).repeat(1,3,1,1)
 
-            lpips_model = lpips.LPIPS(pretrained=True, pnet_rand=False, net='squeeze', eval_mode=True, spatial=True, lpips=True).to('cuda') 
-            mask_lpips_loss_value = lpips_model(cropped_mask_pred_lpips, lumen_mask_lpipis)
+                lpips_model = lpips.LPIPS(pretrained=True, pnet_rand=False, net='squeeze', eval_mode=True, spatial=True, lpips=True).to('cuda') 
+                mask_lpips_loss_value = lpips_model(cropped_mask_pred_lpips, lumen_mask_lpipis)
 
-        else:
-            lpips_mask_weight =0
-            mask_lpips_loss_value =th.tensor([0.0] )
-
-        
+            else:
+                lpips_mask_weight =0
+                mask_lpips_loss_value =th.tensor([0.0] )
 
         
 
         
-        if use_kendal_loss:
-            mask_loss = mask_mse_loss_value
-            terms["loss"] = 0.5*th.exp(-loss_var[0])*mean_flat_loss + 0.5*loss_var[0]+0.5*th.exp(-loss_var[1])*mask_mse_loss_value + 0.5*loss_var[1]
-        else:
-            mask_loss =  mse_mask_weight*mask_mse_loss_value + lpips_mask_weight*mean_flat(mask_lpips_loss_value)
 
-            terms["loss"] = mean_flat_loss + mse_mask_weight*mask_mse_loss_value + lpips_mask_weight*mean_flat(mask_lpips_loss_value)
-      
+        
+            if use_kendal_loss:
+                mask_loss = mask_mse_loss_value
+                terms["loss"] = 0.5*th.exp(-loss_var[0])*mean_flat_loss + 0.5*loss_var[0]+0.5*th.exp(-loss_var[1])*mask_mse_loss_value + 0.5*loss_var[1]
+            else:
+                mask_loss =  mse_mask_weight*mask_mse_loss_value + lpips_mask_weight*mean_flat(mask_lpips_loss_value)
+
+                terms["loss"] = mean_flat_loss + mse_mask_weight*mask_mse_loss_value + lpips_mask_weight*mean_flat(mask_lpips_loss_value)
+
+        elif tag == 'partial':
+            terms["loss"] = mean_flat(loss)
+        
        
 
         
@@ -1134,7 +1137,7 @@ class GaussianDiffusion:
         max_index = th.argmax(t)
         
             # Log the image to W&B
-        if iteration % 200 ==0:
+        if iteration % 200 ==0 and tag == 'full':
             wandb.log({
         "MaskedImage": wandb.Image(aneurysm_mask_contrast[max_index, :, :, :].squeeze(0).detach().cpu().numpy()*x_start_pred[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
         "Image": wandb.Image(x_start_pred[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
