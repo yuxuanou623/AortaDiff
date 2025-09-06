@@ -87,9 +87,13 @@ def main(args):
     filter_val = args.filter_val
 
     logger.log("creating data loader...")
-    train_loader = loader.get_data_loader(args.dataset, args.train_data_dir, config, input,  trans,filter_train, split_set='train', generator=True)
-    train_loader_partiallabel = loader.get_data_loader(args.dataset, args.train_data_dir, config, input,  trans,filter_partial, split_set='train_partial', generator=True)
-    val_loader = loader.get_data_loader(args.dataset, args.val_data_dir, config, input,  trans,filter_val, split_set='val', generator=False)
+    if args.use_thrombus_mask:
+        mask_type = 'thrombus'
+    else:
+        mask_type = 'lumen'
+    train_loader = loader.get_data_loader(args.dataset, args.train_data_dir, config, input,  trans,filter_train, split_set='train', generator=True, mask_type= mask_type)
+    train_loader_partiallabel = loader.get_data_loader(args.dataset, args.train_data_dir, config, input,  trans,filter_partial, split_set='train_partial', generator=True, mask_type= mask_type)
+    val_loader = loader.get_data_loader(args.dataset, args.val_data_dir, config, input,  trans,filter_val, split_set='val', generator=False, mask_type= mask_type)
     time_load_end = time.time()
     time_load = time_load_end - time_load_start
     logger.log("data loaded: time ", str(time_load))
@@ -153,6 +157,7 @@ if __name__ == "__main__":
     parser.add_argument("--mask_lpips_weight", help="fraction of GPU memory to use, like 0.5", type=float, default=1.0)
     parser.add_argument("--kendallloss", help="fraction of GPU memory to use, like 0.5", action="store_true")
     parser.add_argument("--use_dualdecoder_unet", help="fraction of GPU memory to use, like 0.5", action="store_true")
+    parser.add_argument("--use_thrombus_mask", help="use thrombus mask instead of lumen mask", action="store_true")
 
     args = parser.parse_args()
     main(args)

@@ -299,7 +299,7 @@ class LDFDCTDataset(Dataset):
 
 
 class OxAAADataset(Dataset):
-    def __init__(self, data_root: str, mode: str, input_mod='noncontrast', trans_mod='contrast',transforms=None, filter=None):
+    def __init__(self, data_root: str, mode: str, input_mod='noncontrast', trans_mod='contrast',transforms=None, filter=None, mask_type = 'lumen'):
         super(OxAAADataset, self).__init__()
         assert mode in ['train', 'test', 'val'], 'Unknown mode'
         self.mode = mode
@@ -307,6 +307,7 @@ class OxAAADataset(Dataset):
         self.input_mod = input_mod  
         self.trans_mod = trans_mod  
         self.transforms = transforms
+        self.mask_type = mask_type
         
         
         self.data_root =  Path(self.data_root) 
@@ -317,7 +318,10 @@ class OxAAADataset(Dataset):
 
         self.input_mask_dir = Path(self.data_root) / 'noncontrastmask'
         self.trans_mask_dir = Path(self.data_root) / 'contrastmask'
-        self.trans_lumenmask_dir = Path(self.data_root) / 'contrastlumenmask'
+        if self.mask_type == 'lumen':
+            self.trans_lumenmask_dir = Path(self.data_root) / 'contrastlumenmask'
+        else:
+            self.trans_lumenmask_dir = Path(self.data_root) / 'contrastthrombusmask'
         
 
     

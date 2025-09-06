@@ -14,7 +14,7 @@ g = th.Generator()
 g.manual_seed(0)
 
 
-def get_data_loader(dataset, data_path, config, input, trans, filter, split_set='train', generator=True):
+def get_data_loader(dataset, data_path, config, input, trans, filter, split_set='train', generator=True, mask_type=None):
     if dataset == 'brats':
         loader = get_data_loader_brats_cyclic(input, trans, data_path, config.score_model.training.batch_size, config.score_model.image_size,
                                            split_set=split_set)
@@ -24,17 +24,17 @@ def get_data_loader(dataset, data_path, config, input, trans, filter, split_set=
     elif dataset == 'oxaaa':
         if split_set == "train":
             loader = get_data_loader_oxaaa_cyclic(input, trans, filter, data_path, config.score_model.training.batch_size, config.score_model.image_size,
-                                           split_set=split_set)
+                                           split_set=split_set,mask_type = mask_type)
         elif split_set == "train_partial":
             loader = get_data_loader_oxaaa_cyclic_partial(input, trans, filter, data_path, config.score_model.training.batch_size, config.score_model.image_size,
                                            split_set="train")
         elif split_set == "test":
             loader = get_data_loader_oxaaa_cyclic(input, trans, filter, data_path, config.sampling.batch_size, config.score_model.image_size,
-                                           split_set=split_set)
+                                           split_set=split_set,mask_type = mask_type)
         elif split_set == "val":
             print("split_set == val")
             loader = get_data_loader_oxaaa_cyclic(input, trans, filter, data_path, config.sampling.batch_size, config.score_model.image_size,
-                                           split_set=split_set)
+                                           split_set=split_set,mask_type = mask_type)
 
     else:
         raise Exception("Dataset does exit")
@@ -108,7 +108,7 @@ def get_data_loader_ldfdct_cyclic(input, trans, path, batch_size, image_size, sp
     
     return th.utils.data.DataLoader(dataset, **default_kwargs)
 
-def get_data_loader_oxaaa_cyclic(input, trans, filter, path, batch_size, image_size, split_set: str = 'train'):
+def get_data_loader_oxaaa_cyclic(input, trans, filter, path, batch_size, image_size, split_set: str = 'train', mask_type: str = 'lumen'):
 
     assert split_set in ["train", "test", "val"]
     default_kwargs = {"drop_last": False, "batch_size": batch_size, "pin_memory": False, "num_workers": 0,
@@ -118,7 +118,6 @@ def get_data_loader_oxaaa_cyclic(input, trans, filter, path, batch_size, image_s
 
         default_kwargs["shuffle"] = False
         default_kwargs["num_workers"] = 1
-        # default_kwargs["batch_size"] = 2
         infer_transforms = get_oxaaa_train_transform_abnormalty_test(image_size)
         dataset = OxAAADataset(
             data_root=path,
@@ -126,7 +125,8 @@ def get_data_loader_oxaaa_cyclic(input, trans, filter, path, batch_size, image_s
             input_mod=input,
             trans_mod=trans,
             filter = filter,
-            transforms=infer_transforms)
+            transforms=infer_transforms,
+            mask_type = mask_type)
     elif split_set == "train":
         
         default_kwargs["shuffle"] = True
@@ -138,7 +138,8 @@ def get_data_loader_oxaaa_cyclic(input, trans, filter, path, batch_size, image_s
             input_mod=input,
             trans_mod=trans,
             filter = filter,
-            transforms=train_transforms)
+            transforms=train_transforms,
+            mask_type = mask_type)
     else:
         
         default_kwargs["shuffle"] = False
@@ -150,7 +151,8 @@ def get_data_loader_oxaaa_cyclic(input, trans, filter, path, batch_size, image_s
             input_mod=input,
             trans_mod=trans,
             filter = filter,
-            transforms=train_transforms)
+            transforms=train_transforms,
+            mask_type = mask_type)
 
     print(f"dataset lenght: {len(dataset)}")
    

@@ -780,11 +780,11 @@ class GaussianDiffusion:
                     #mask_forward  = prev_mask_forward
 
 
-                    # import matplotlib.pyplot as plt
-                    # # === Timesteps you want to save ===
-                    # save_timesteps = [998, 995, 990, 950, 900, 800, 500, 100, 1]
+                    # # import matplotlib.pyplot as plt
+                    # # # === Timesteps you want to save ===
+                    # save_timesteps = [998, 898, 798, 698, 598, 498, 398, 299, 199, 99, 1]
 
-                    # # === Load or create persistent storage ===
+                    # # # === Load or create persistent storage ===
                     # saved_img_list = getattr(self, "_saved_img_list", {})
                     # saved_mask_list = getattr(self, "_saved_mask_list", {})
                     # saved_startimg_list = getattr(self, "_start_img_list", {})
@@ -794,6 +794,30 @@ class GaussianDiffusion:
                     #     saved_img_list[t_cur] = prev_img_forward.detach().cpu()  # shape: [B, 1, H, W]
                     #     saved_mask_list[t_cur] = prev_mask_forward.detach().cpu()
                     #     saved_startimg_list[t_cur] = out_forward["pred_xstart"].detach().cpu()
+
+                    #     # Convert from torch.Tensor to numpy and normalize to [0, 255] for saving
+                    #     def tensor_to_img(tensor):
+                    #         img = tensor.squeeze().numpy()  # shape: [H, W]
+                    #         img = (img - img.min()) / (img.max() - img.min() + 1e-8)  # normalize to [0, 1]
+                    #         img = (img * 255).astype(np.uint8)
+                    #         return img
+
+                    #     # Iterate over batch
+                    #     B = saved_img_list[t_cur].shape[0]
+                    #     for i in range(B):
+                    #         img = tensor_to_img(saved_img_list[t_cur][i])
+                    #         #mask = tensor_to_img(saved_mask_list[t_cur][i])
+                    #         start = tensor_to_img(saved_startimg_list[t_cur][i])
+                    #         pred_bin = (saved_mask_list[t_cur][i] <= 0).to(th.uint8)
+                    #         pred_bin = tensor_to_img(pred_bin)
+
+                    #         # Stack horizontally: [H, W * 3]
+                    #         combined = np.concatenate([img, pred_bin, start], axis=1)
+
+                    #         # Save as PNG
+                    #         save_path = os.path.join("/mnt/data/data/evaluation/intermediate", f"sample_{t_cur}_{i}.png")
+                    #         Image.fromarray(combined).save(save_path)
+                    #         print(f"Saved: {save_path}")
 
                     #     # Store back to self for persistence
                     #     self._saved_img_list = saved_img_list
