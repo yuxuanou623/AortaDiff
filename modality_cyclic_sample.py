@@ -363,8 +363,13 @@ def main(args):
 
     logger.log("creating loader...")
 
+    if args.use_thrombus_mask:
+        mask_type = 'thrombus'
+    else:
+        mask_type = 'lumen'
+
     test_loader = loader.get_data_loader(args.dataset, args.data_dir, config, args.input, args.trans, args.filter, split_set='test',
-                                          generator=False)
+                                          generator=False, mask_type= mask_type)
     
 
         # Define the folder to save images
@@ -391,6 +396,8 @@ def main(args):
     model_backward = create_score_model(config, image_level_cond_backward)
 
     filename = args.modelfilename
+
+    
  
 
     with bf.BlobFile(bf.join(logger.get_dir(), filename), "rb") as f:
@@ -654,6 +661,7 @@ if __name__ == "__main__":
     parser.add_argument("--cond_on_lumen_mask", help="brats",  action="store_true")
     parser.add_argument("--sdg_lumen_mask", help="brats",  action="store_true")
     parser.add_argument("--use_dualdecoder_unet", help="fraction of GPU memory to use, like 0.5", action="store_true")
+    parser.add_argument("--use_thrombus_mask", help="use thrombus mask instead of lumen mask", action="store_true")
 
     args = parser.parse_args()
     print(args.dataset)
