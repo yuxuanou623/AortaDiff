@@ -102,7 +102,7 @@ class TrainLoop:
             fp16_scale_growth=fp16_scale_growth,
         )
 
-        if not self.args.kendallloss:
+        if not self.args.use_kendall_loss:
 
             self.opt = AdamW(
                 self.mp_trainer.master_params, lr=self.lr, weight_decay=self.weight_decay
@@ -282,24 +282,14 @@ class TrainLoop:
             tag = tag,
             input_img=self.noncon_arota,
             trans_img=self.contrast,
-            aneurysm_mask_contrast = self.contrast_mask_tolerated,
-            aneurysm_mask_noncontrast = self.noncontrast_mask_tolerated,
-            noncon_arota_hist=self.noncon_arota_hist,
-            con_arota_hist=self.con_arota_hist,
-            have_noncon_arota_hist = self.args.noncontrast_hist,
-            have_con_arota_hist = self.args.contrast_hist,
-            cond_on_noncontrast_mask = self.args.cond_on_noncontrast_mask,
-            cond_on_contrast_mask = self.args.cond_on_contrast_mask,
             square_mask = self.square_mask,
             lumen_mask = cond_lumen,
-            cond_on_lumen_mask = self.args.cond_on_lumen_mask,
-            coarse_lumen_mask = self.coarse_m_sdf,
             mask_mse_loss = self.args.add_mask_mse_loss,
             mask_loss_weight = self.args.mask_mse_loss_weight,
             mask_lpips_loss = self.args.add_mask_lpips_loss,
             mask_lpips_weight = self.args.mask_lpips_weight,
             loss_var = self.log_vars,
-            use_kendal_loss = self.args.kendallloss,
+            use_kendall_loss = self.args.use_kendall_loss,
             model_name = self.args.model_name,
             t=self.t,
             iteration=iteration,
@@ -401,7 +391,4 @@ def find_ema_checkpoint(main_checkpoint, step, rate):
 def log_loss_dict(diffusion, ts, losses):
     for key, values in losses.items():
         logger.logkv_mean(key, values.mean().item())
-        # Log the quantiles (four quartiles, in particular).
-        # for sub_t, sub_loss in zip(ts.cpu().numpy(), values.detach().cpu().numpy()):
-        #     quartile = int(4 * sub_t / diffusion.num_timesteps)
-        #     logger.logkv_mean(f"{key}_q{quartile}", sub_loss)
+        

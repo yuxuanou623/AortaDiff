@@ -360,7 +360,7 @@ class GaussianDiffusion:
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
 
     def p_mean_variance(
-            self, model, x, t, cond=None, cond_hist = None, cond_on_lumen_mask = False, lumen_mask = None, coarse_lumen_mask = None, clip_denoised=True, model_kwargs=None
+            self, model, x, t, cond=None,    clip_denoised=True, model_kwargs=None
     ):
         """
         Apply the model to get p(x_{t-1} | x_t), as well as a prediction of
@@ -386,13 +386,10 @@ class GaussianDiffusion:
         assert t.shape == (B,)
         # x=torch.zeros(x.shape).cuda()
        
-        if cond_on_lumen_mask:
-            
         
-            x_in = th.cat((x, cond, coarse_lumen_mask), 1)
-        else:
-            x_in = th.cat((x, cond), 1)
-        model_output, updated_mask = model(x=x_in, timesteps = self._scale_timesteps(t),hist = cond_hist, **model_kwargs)
+        
+        x_in = th.cat((x, cond), 1)
+        model_output, updated_mask = model(x=x_in, timesteps = self._scale_timesteps(t),**model_kwargs)
         
         
         
@@ -549,10 +546,6 @@ class GaussianDiffusion:
             cond,
             mask,
             noncon_img,
-            cond_hist,
-            cond_on_lumen_mask,
-            lumen_mask,
-            coarse_lumen_mask,
             t,
             clip_denoised=True,
             cond_fn=None,
@@ -585,10 +578,6 @@ class GaussianDiffusion:
             x,
             t,
             cond,
-            cond_hist,
-            cond_on_lumen_mask,
-            lumen_mask,
-            coarse_lumen_mask,
             clip_denoised=clip_denoised,
             model_kwargs=model_kwargs,
         )
@@ -609,18 +598,13 @@ class GaussianDiffusion:
             model_backward,
             test_data_input,
             test_data_seg,
-            cond_hist,
             cond,
-            cond_on_lumen_mask,
-            lumen_mask,
             shape,
             model_name=None,
             clip_denoised=True,
             model_kwargs=None,
             device=None,
             eta=0.0,
-            model_forward_name: str =None,
-            model_backward_name: str =None,
             ddim: bool = False
     ):
         """
@@ -647,18 +631,13 @@ class GaussianDiffusion:
                 model_backward,
                 test_data_input,
                 test_data_seg,
-                cond_hist,
                 cond,
-                cond_on_lumen_mask,
-                lumen_mask,
                 shape,
                 model_name=model_name,
                 clip_denoised=clip_denoised,
                 model_kwargs=model_kwargs,
                 device=device,
                 eta=eta,
-                model_forward_name=model_forward_name,
-                model_backward_name=model_backward_name,
                 ddim=ddim
         ):
             final = sample
@@ -673,18 +652,13 @@ class GaussianDiffusion:
             model_backward,
             test_data_input,
             test_data_seg,
-            cond_hist,
             cond,
-            cond_on_lumen_mask,
-            lumen_mask,
             shape,
             model_name=None,
             clip_denoised=True,
             model_kwargs=None,
             device=None,
             eta=0.0,
-            model_forward_name: str=None,
-            model_backward_name: str=None,
             ddim: bool=False
     ):
         """
@@ -703,17 +677,13 @@ class GaussianDiffusion:
 
 
         if model_name == 'diffusion':
-            indices = list(range(self.num_timesteps))[::-1]
-            # num_mask = list(range(128))
-            # num_mask = tqdm(num_mask)
+            
 
             noise = th.randn(*shape, device=device)
             
             img_forward = noise.cuda()
-            # mask_forward = test_coarse_m_sdf
-            mask_forward = None
-
-            masks_all = []
+           
+            
             if True:
                 times = get_schedule_jump(self.num_timesteps, 1, 10, 2)
                 time_pairs = list(zip(times[:-1], times[1:]))
@@ -722,7 +692,7 @@ class GaussianDiffusion:
                 from tqdm.auto import tqdm
                 time_pairs = tqdm(time_pairs)
             for t_last, t_cur in time_pairs:
-                print(t_last, t_cur)
+                
 
                 
                 
@@ -731,17 +701,16 @@ class GaussianDiffusion:
                 if t_cur < t_last: 
                     t_forward = th.tensor([t_last_t] * shape[0], device=device)
                     with th.no_grad():
-                        print("t_forward",t_last_t)
-                      
                         
-
                         cond_forward =  cond
                         noncon_img = test_data_input
-                        cond_hist = cond_hist
+                        
 
                         
                     
                         if ddim == 'False':
+
+                            
                             
                     
                             out_forward = self.p_sample(
@@ -750,10 +719,6 @@ class GaussianDiffusion:
                                 cond_forward,
                                 test_data_seg,
                                 noncon_img,
-                                cond_hist,
-                                cond_on_lumen_mask,
-                                lumen_mask,
-                                mask_forward,
                                 t_forward,
                                 clip_denoised=clip_denoised,
                                 model_kwargs=model_kwargs,
@@ -777,91 +742,7 @@ class GaussianDiffusion:
    
                     x_yield = [prev_img_forward, out_forward["mask"], out_forward["weightedgt"], out_forward["x"], prev_mask_forward]
                     img_forward = prev_img_forward
-                    #mask_forward  = prev_mask_forward
-
-
-                    # # import matplotlib.pyplot as plt
-                    # # # === Timesteps you want to save ===
-                    # save_timesteps = [998, 898, 798, 698, 598, 498, 398, 299, 199, 99, 1]
-
-                    # # # === Load or create persistent storage ===
-                    # saved_img_list = getattr(self, "_saved_img_list", {})
-                    # saved_mask_list = getattr(self, "_saved_mask_list", {})
-                    # saved_startimg_list = getattr(self, "_start_img_list", {})
-
-                    # if t_cur in save_timesteps:
-                    #     # Save the entire batch
-                    #     saved_img_list[t_cur] = prev_img_forward.detach().cpu()  # shape: [B, 1, H, W]
-                    #     saved_mask_list[t_cur] = prev_mask_forward.detach().cpu()
-                    #     saved_startimg_list[t_cur] = out_forward["pred_xstart"].detach().cpu()
-
-                    #     # Convert from torch.Tensor to numpy and normalize to [0, 255] for saving
-                    #     def tensor_to_img(tensor):
-                    #         img = tensor.squeeze().numpy()  # shape: [H, W]
-                    #         img = (img - img.min()) / (img.max() - img.min() + 1e-8)  # normalize to [0, 1]
-                    #         img = (img * 255).astype(np.uint8)
-                    #         return img
-
-                    #     # Iterate over batch
-                    #     B = saved_img_list[t_cur].shape[0]
-                    #     for i in range(B):
-                    #         img = tensor_to_img(saved_img_list[t_cur][i])
-                    #         #mask = tensor_to_img(saved_mask_list[t_cur][i])
-                    #         start = tensor_to_img(saved_startimg_list[t_cur][i])
-                    #         pred_bin = (saved_mask_list[t_cur][i] <= 0).to(th.uint8)
-                    #         pred_bin = tensor_to_img(pred_bin)
-
-                    #         # Stack horizontally: [H, W * 3]
-                    #         combined = np.concatenate([img, pred_bin, start], axis=1)
-
-                    #         # Save as PNG
-                    #         save_path = os.path.join("/mnt/data/data/evaluation/intermediate", f"sample_{t_cur}_{i}.png")
-                    #         Image.fromarray(combined).save(save_path)
-                    #         print(f"Saved: {save_path}")
-
-                    #     # Store back to self for persistence
-                    #     self._saved_img_list = saved_img_list
-                    #     self._saved_mask_list = saved_mask_list
-                    #     self._start_img_list = saved_startimg_list
-
-                     
-                        
-
-                    #     # === Save once all timesteps are collected ===
-                    #     if len(saved_img_list) == len(save_timesteps):
-                    #         save_dir = "/home/trin4156/Desktop/codes/MMCCD"
-                    #         os.makedirs(save_dir, exist_ok=True)
-
-                    #         sorted_ts = sorted(save_timesteps, reverse=True)
-                    #         batch_size = prev_img_forward.shape[0]
-
-                    #         # For each sample in the batch, generate one PNG
-                    #         for idx in range(batch_size):
-                    #             fig, axes = plt.subplots(3, len(sorted_ts), figsize=(3 * len(sorted_ts), 6))
-
-                    #             for i, t in enumerate(sorted_ts):
-                    #                 img_np = saved_img_list[t][idx, 0].numpy()  # [H, W]
-                    #                 mask_np = saved_mask_list[t][idx, 0].numpy()  # [H, W]
-                    #                 predstart_np = saved_startimg_list[t][idx, 0].numpy()  # [H, W]
-
-                    #                 axes[0, i].imshow(img_np, cmap='gray')
-                    #                 axes[0, i].set_title(f"Image t={t}")
-                    #                 axes[0, i].axis('off')
-
-                    #                 axes[1, i].imshow(mask_np, cmap='gray')
-                    #                 axes[1, i].set_title(f"Mask t={t}")
-                    #                 axes[1, i].axis('off')
-
-                    #                 axes[2, i].imshow(predstart_np, cmap='gray')
-                    #                 axes[2, i].set_title(f"Pred start t={t}")
-                    #                 axes[2, i].axis('off')
-
-                    #             plt.tight_layout()
-                    #             out_path = os.path.join(save_dir, f"sample_{idx:02d}_timesteps.png")
-                    #             plt.savefig(out_path)
-                    #             plt.close()
-                    #             print(f"✅ Saved: {out_path}")
-
+                    
                 
 
 
@@ -946,7 +827,7 @@ class GaussianDiffusion:
 
 
 
-    def training_losses(self,  model, tag, input_img, trans_img, aneurysm_mask_contrast,aneurysm_mask_noncontrast,noncon_arota_hist,con_arota_hist,have_con_arota_hist,have_noncon_arota_hist,cond_on_noncontrast_mask, cond_on_contrast_mask,square_mask, lumen_mask, cond_on_lumen_mask,coarse_lumen_mask, mask_mse_loss,mask_loss_weight, mask_lpips_loss, mask_lpips_weight, loss_var,use_kendal_loss, model_name, t,iteration, x_start_t=None, model_kwargs=None, noise=None):
+    def training_losses(self,  model, tag, input_img, trans_img, square_mask, lumen_mask, mask_mse_loss,mask_loss_weight, mask_lpips_loss, mask_lpips_weight, loss_var,use_kendall_loss, model_name, t,iteration, x_start_t=None, model_kwargs=None, noise=None):
         """
         Compute training losses for a single timestep.
 
@@ -967,55 +848,27 @@ class GaussianDiffusion:
         terms = {}
 
         if model_name == 'diffusion':
-            # trans_img = (trans_img / 255.0) * 2 - 1
-            # input_img = (input_img / 255.0) * 2 - 1
+            
             x_t = self.q_sample(trans_img, noise, self._scale_timesteps(t))
-           
-            hist = None
 
             
             
-          
+            cond = input_img
             
             
-           
-            # if model_kwargs.use_con_arota_hist:
-            if have_con_arota_hist:
-               
-                hist = con_arota_hist
-             
-            elif have_noncon_arota_hist:
-                hist = noncon_arota_hist
-            if cond_on_noncontrast_mask:
-                cond = aneurysm_mask_noncontrast
-            elif cond_on_contrast_mask:
-                cond = aneurysm_mask_contrast
-            else:
-                cond = input_img
             
-            if cond_on_lumen_mask:
-                x_t_input = th.cat((x_t, cond, coarse_lumen_mask), 1)
-            else:
-                x_t_input = th.cat((x_t, cond), 1)
+            x_t_input = th.cat((x_t, cond), 1)
           
 
-            # x_start_pred, masks, mask_logits = model(x_t_input, self._scale_timesteps(t), **model_kwargs)
-            x_start_pred, updated_mask= model(x=x_t_input, timesteps = self._scale_timesteps(t),hist = hist, **model_kwargs)
-            # mask_logits = model(x_t_input, self._scale_timesteps(t), **model_kwargs)
+            
+            x_start_pred, updated_mask= model(x=x_t_input, timesteps = self._scale_timesteps(t), **model_kwargs)
+            
         elif model_name == 'unet':
             x_t_input = input_img
             x_start_pred = model(x_t_input, **model_kwargs)
-        
-        
-       
-
-       
-        # masks_penalty = mask_dominance_penalty(mask_logits)
-        
 
         target = trans_img
-    #     loss = masks[:, 0, :, :] * (target - x_start_pred) ** 2 + \
-    #    masks[:, 1, :, :] * (input_img - x_start_pred) ** 2 
+
         
 
         recontructed_image = x_start_pred*square_mask
@@ -1027,69 +880,7 @@ class GaussianDiffusion:
         lpips_model = lpips.LPIPS(pretrained=True, pnet_rand=False, net='squeeze', eval_mode=True, spatial=True, lpips=True).to('cuda') 
         loss = lpips_model(recontructed_image_lpips, trans_img_lpipis)
         
-        # terms["loss"] = mean_flat(loss) + masks_penalty
         
-        # def smooth_any_positive(x, alpha=10):
-        #     """
-        #     Differentiable function to check if any value in x is greater than 0.
-        #     Uses Log-Sum-Exp (Softplus) to approximate OR.
-        #     :param x: Tensor of shape (...), any number of dimensions
-        #     :param alpha: Sharpness control (higher = closer to hard OR)
-        #     :return: Smoothly approximates max(x, 0)
-        #     """
-        #     return th.log(1 + th.sum(th.exp(alpha * x))) / alpha
-        def smooth_any_positive_fixed(x, alpha=100):
-            """
-            Ensures that the function outputs ~0 when all values in x are <= 0.
-            
-            :param x: Tensor of shape (...), any number of dimensions.
-            :param alpha: Sharpness control (higher = closer to hard OR).
-            :return: A smoothly transitioning value > 0 if any x_i > 0, otherwise ~0.
-            """
-            n = x.numel()  # Number of elements in x
-            n_tensor = th.tensor(1 + n, dtype=x.dtype, device=x.device)  # Convert to tensor
-            return (th.log(1 + th.sum(th.exp(alpha * x))) - th.log(n_tensor)) / alpha  # Normalized
-
-
-        def check_empty_masks(masks_logits, alpha=10):
-            """
-            Computes smooth_any_positive for each mask individually (per mask, per image).
-            Then returns the mean value across all masks per image.
-
-            :param masks_logits: Tensor of shape (batch_size, num_mask, H, W)
-            :param alpha: Sharpness parameter for smooth_any_positive
-            :return: Tensor of shape (batch_size,), mean empty mask score per image
-            """
-            batch_size, num_mask, H, W = masks_logits.shape
-
-            # Shift logits by -1/num_mask
-            shifted_logits = masks_logits - (1.0 / num_mask)
-
-            smooth_values_list = []  # Store values for each mask per image
-
-            for b in range(batch_size):  # Iterate over batch
-                per_image_values = []
-                for m in range(num_mask):  # Iterate over masks
-                    # Flatten the spatial dimensions and compute smooth_any_positive
-                    smooth_value = reverse_relu(smooth_any_positive_fixed(shifted_logits[b, m].flatten(), alpha=alpha))
-                    per_image_values.append(smooth_value)
-                
-                # Compute mean across all masks in the image
-                mean_smooth_value = th.stack(per_image_values).mean()
-                smooth_values_list.append(mean_smooth_value)
-
-            # Convert list to tensor and return mean across batch
-            smooth_values = th.stack(smooth_values_list)  # Shape: (batch_size,)
-            
-            return smooth_values.mean()  # Mean value per image
-        def reverse_relu(y):
-            """
-            Reverse ReLU: Returns y when y < 0, and 0 when y >= 0.
-            
-            :param y: Input tensor.
-            :return: Reverse ReLU applied to y.
-            """
-            return th.relu(-y)  # Equivalent to max(-y, 0)
         loss_func = nn.MSELoss(reduction='mean').to(x_t.device)
         
         def dice_score_from_sdf(sdf1, sdf2, eps=1e-5):
@@ -1110,7 +901,7 @@ class GaussianDiffusion:
            
 
         
-        # terms["loss"] = -0.01*mask_logits.var(dim=1).mean() + mean_flat(loss) -0.05*check_empty_masks(mask_logits)  #mask5noncon2con_losss wandb colorful_fire
+        
             mean_flat_loss = mean_flat(loss)
             if mask_mse_loss:
                 mse_mask_weight = mask_loss_weight
@@ -1133,12 +924,7 @@ class GaussianDiffusion:
                 lpips_mask_weight =0
                 mask_lpips_loss_value =th.tensor([0.0] )
 
-        
-
-        
-
-        
-            if use_kendal_loss:
+            if use_kendall_loss:
                 mask_loss = mask_mse_loss_value
                 terms["loss"] = 0.5*th.exp(-loss_var[0])*mean_flat_loss + 0.5*loss_var[0]+0.5*th.exp(-loss_var[1])*mask_mse_loss_value + 0.5*loss_var[1]
             else:
@@ -1156,25 +942,22 @@ class GaussianDiffusion:
 
       
 
-        # print("mean_flat(loss)",mean_flat(loss))
+        
         
         max_index = th.argmax(t)
         
             # Log the image to W&B
         if iteration % 200 ==0 and tag == 'full':
             wandb.log({
-        "MaskedImage": wandb.Image(aneurysm_mask_contrast[max_index, :, :, :].squeeze(0).detach().cpu().numpy()*x_start_pred[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
         "Image": wandb.Image(x_start_pred[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
         "Target": wandb.Image(target[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
-        "updatedmask": wandb.Image(updated_mask[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
-        "lumenmask": wandb.Image(lumen_mask[max_index, :, :, :].squeeze(0).detach().cpu().numpy()), 
-        "lpips loss":mean_flat_loss.mean().item(),
-        "mask_loss":mask_loss.mean().item(),
-        "dice":dice_score.item(),
-        "loss_var1": loss_var[0].item(),
-        "loss_var2": loss_var[1].item()},step=iteration)
-       
-
+        "Updatedmask": wandb.Image(updated_mask[max_index, :, :, :].squeeze(0).detach().cpu().numpy()),
+        "Lumenmask": wandb.Image(lumen_mask[max_index, :, :, :].squeeze(0).detach().cpu().numpy()), 
+        "Lpips loss":mean_flat_loss.mean().item(),
+        "Mask loss":mask_loss.mean().item(),
+        "Dice":dice_score.item(),
+        "Kendall_loss_var1": loss_var[0].item(),
+        "Kendall_loss_var2": loss_var[1].item()},step=iteration)
         return terms
 
 

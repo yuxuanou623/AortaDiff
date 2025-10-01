@@ -388,11 +388,9 @@ def main(args):
         raise Exception("Model name does exit")
     diffusion = create_gaussian_diffusion(config, args.timestep_respacing)
 
-    if not args.use_dualdecoder_unet:
-        model_forward = create_score_model(config, image_level_cond_forward, args.contrast_hist or args.noncontrast_hist, args.cond_on_lumen_mask )
-    else:
-        model_forward = create_score_model_dual_decoder(config, image_level_cond_forward,args.contrast_hist or args.noncontrast_hist , args.cond_on_lumen_mask )
-
+    
+    model_forward = create_score_model(config, image_level_cond_forward)
+    
     model_backward = create_score_model(config, image_level_cond_backward)
 
     filename = args.modelfilename
@@ -408,11 +406,7 @@ def main(args):
         )
     model_forward.to(th.device('cuda'))
 
-    experiment_name_backward = f.name.split(experiment_name)[0] + args.experiment_name_backward + f.name.split(experiment_name)[1]
-    # model_backward.load_state_dict(
-    #     th.load(experiment_name_backward, map_location=th.device('cuda'))
-    # )
-    # model_backward.to(th.device('cuda'))
+    
 
     if config.score_model.use_fp16:
         model_forward.convert_to_fp16()
@@ -475,24 +469,18 @@ def main(args):
                 test_data_seg = test_data_dict.pop('noncontrast_mask_tolerated').cuda()
 
                 
-                test_data_conhist = test_data_dict.pop('trans_hist').cuda()
-                test_data_nonconhist = test_data_dict.pop('input_hist').cuda()
+                
                 test_data_arota = test_data_dict.pop('noncon_arota').cuda()
                 test_data_conarota = test_data_dict.pop('contrast_mask_tolerated').numpy()
                 test_trans_lumen_mask_tolerated = test_data_dict.pop('trans_lumen_mask_tolerated').cuda()
                 test_m_sdf = test_data_dict.pop('m_sdf').cuda()  
                 # test_coarse_m_sdf = test_data_dict.pop('coarse_m_sdf').cuda()
 
-                cond_hist = None
-                if args.contrast_hist:
-                    cond_hist = test_data_conhist
-                elif args.noncontrast_hist:
-                    cond_hist = test_data_nonconhist
+                
 
-                if args.cond_on_noncontrast_mask:
-                    cond = test_data_seg
-                else:
-                    cond = test_data_arota
+                
+                
+                cond = test_data_arota
 
 
                 img_true_all = np.zeros((test_data_input.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
@@ -522,21 +510,16 @@ def main(args):
             sample_fn = (
                             diffusion.p_sample_loop
             )
-            print("test_data_input",test_data_input.shape)
             
-            # sample = sliding_window_inference(test_data_input,sample_fn,  model_forward, model_backward, model_kwargs, config, args,
-            #                      patch_size=128, stride=128, batch_size=32 )
             
             sample = sample_fn(
-                model_forward, model_backward, test_data_input, test_data_seg,cond_hist, cond,args.cond_on_lumen_mask,lumen,
+                model_forward, model_backward, test_data_input, test_data_seg, cond,
                 (test_data_seg.shape[0], config.score_model.num_input_channels, config.score_model.image_size,
                 config.score_model.image_size),
                 model_name=args.model_name,
                 clip_denoised=config.sampling.clip_denoised,  # is True, clip the denoised signal into [-1, 1].
                 model_kwargs=model_kwargs,  # reconstruction = True
                 eta=config.sampling.eta,
-                model_forward_name=args.experiment_name_forward,
-                model_backward_name=args.experiment_name_backward,
                 ddim=args.use_ddim
 
             )
@@ -558,7 +541,7 @@ def main(args):
 
 
             
-            test_data_seg_detach = test_data_seg.detach().cpu().numpy()
+            
             img_true_all= test_data_input.detach().cpu().numpy()
             img_pred_all= sample_datach
             trans_all=test_data_gt.detach().cpu().numpy()
@@ -577,7 +560,7 @@ def main(args):
                     
                 error = np.array(error)
             
-                error_map = normalize(error)
+                
                 output_folder_pred = "/mnt/data/data/evaluation/predict" +filename[:-3] + "timestep1000new"# Change to your actual folder
             
                 # save_images(img_pred_all, img_true_all, trans_all,output_folder_pred, output_folder_true,output_folder_trans,num_sample)
@@ -592,18 +575,7 @@ def main(args):
                 avg_whole_mse.append(average_mse_whole)
                 avg_crop_mse.append(average_mse_crop)
                 avg_dice.append(average_dice)
-            elif args.model_name == 'diffusion_':
-                filename_mask = "mask_forward_"+args.experiment_name_forward+'_backward_'+args.experiment_name_backward+".pt"
-                filename_x0 = "cyclic_predict_"+args.experiment_name_forward+'_backward_'+args.experiment_name_backward+".pt"
-                with bf.BlobFile(bf.join(logger.get_dir(), filename_mask), "rb") as f:
-                    tensor_load_mask = th.load(f)
-                with bf.BlobFile(bf.join(logger.get_dir(), filename_x0), "rb") as f:
-                    tensor_load_xpred = th.load(f)
-                load_gt_repeat = np.expand_dims(img_true_all, axis=0).repeat(tensor_load_mask.shape[0], axis=0)
-                error_map = (np.abs(tensor_load_xpred.numpy() - load_gt_repeat)) ** 2
-                mean_error_map = np.sum(error_map * (1-tensor_load_mask.numpy()), 0) / np.sum((1-tensor_load_mask.numpy()), 0)
-                error_map = normalize(np.where(np.isnan(mean_error_map), 0, mean_error_map))
-        
+                    
         except Exception as e:
             print(f"Error in batch {i}: {e}")
             continue
@@ -643,25 +615,19 @@ def reseed_random(seed):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--gpu_id", help="the id of the gpu you want to use, like 0", type=int, default=0)
-    parser.add_argument("--dataset", help="brats", type=str, default='oxaaa')
-    parser.add_argument("--input", help="input modality, choose from flair, t2, t1", type=str, default='noncontrast')
-    parser.add_argument("--trans", help="input modality, choose from flair, t2, t1", type=str, default='contrast')
+    parser.add_argument("--dataset", help="oxaaa", type=str, default='oxaaa')
+    parser.add_argument("--input", help="input modality", type=str, default='noncontrast')
+    parser.add_argument("--trans", help="output modality", type=str, default='contrast')
     parser.add_argument("--data_dir", help="data directory", type=str, default='/mnt/data/data/OxAAA/test/normalized')
     parser.add_argument("--experiment_name_forward", help="forward model saving file name", type=str, default='diffusion_oxaaa_noncon_con')
-    parser.add_argument("--experiment_name_backward", help="backward model saving file name", type=str, default='meiyou')
     parser.add_argument("--model_name", help="translated model: unet or diffusion", type=str, default='diffusion')
     parser.add_argument("--use_ddim", help="if you want to use ddim during sampling, True or False", type=str, default='False')
     parser.add_argument("--timestep_respacing", help="If you want to rescale timestep during sampling. enter the timestep you want to rescale the diffusion prcess to. If you do not wish to resale thetimestep, leave it blank or put 1000.", type=int,
                         default=1000)
-    parser.add_argument("--modelfilename", help="brats", type=str, default='model080000ddpm_renonstruct_onlycontrust_cond_square_nonconarota_cond_mask_square_lpips_loss_joint_no_init_mask.pt')
-    parser.add_argument("--filter", help="a npy to filter data based on pixel difference and mask difference", type=str, default='/mnt/data/data/OxAAA/test/normalized/test_file_with_lumen.npy')
-    parser.add_argument("--contrast_hist", help="a npy to filter data based on pixel difference and mask difference", action="store_true")
-    parser.add_argument("--noncontrast_hist", help="a npy to filter data based on pixel difference and mask difference", action="store_true")
-    parser.add_argument("--cond_on_noncontrast_mask", help="a npy to filter data based on pixel difference and mask difference", action="store_true")
-    parser.add_argument("--cond_on_lumen_mask", help="brats",  action="store_true")
+    parser.add_argument("--modelfilename", help="the model filename you want to sample", type=str, default='model080000ddpm_renonstruct_onlycontrust_cond_square_nonconarota_cond_mask_square_lpips_loss_joint_no_init_mask.pt')
+    parser.add_argument("--filter", help="a test data npy file", type=str, default='/mnt/data/data/OxAAA/test/normalized/test_file_with_lumen.npy')
     parser.add_argument("--sdg_lumen_mask", help="brats",  action="store_true")
-    parser.add_argument("--use_dualdecoder_unet", help="fraction of GPU memory to use, like 0.5", action="store_true")
-    parser.add_argument("--use_thrombus_mask", help="use thrombus mask instead of lumen mask", action="store_true")
+    parser.add_argument("--use_thrombus_mask", help="perform thrombus segmentation instead of lumen segmentation", action="store_true")
 
     args = parser.parse_args()
     print(args.dataset)

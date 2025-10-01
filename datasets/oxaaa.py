@@ -119,182 +119,9 @@ def get_oxaaa_train_transform_abnormalty_train_partial(image_size):
     ]
     return transforms.Compose(base_transform + data_aug)
 
-def get_ldfdct_train_transform_abnormalty_train(image_size):
-    base_transform = get_ldfdct_base_transform_abnormalty_train(image_size)
-    data_aug = [
-        transforms.EnsureTyped(
-            keys=['input', 'trans']),
-    ]
-    return transforms.Compose(base_transform + data_aug)
-def get_ldfdct_base_transform_abnormalty_train(image_size):
-
-    base_transform = [
-        transforms.AddChanneld(
-            keys=['input', 'trans']),
-        transforms.Resized(
-            keys=['input', 'trans'],
-            spatial_size=(image_size, image_size)),
-    ]
-
-    return base_transform
-
-def get_ldfdct_train_transform_abnormalty_test(image_size):
-    base_transform = get_ldfdct_base_transform_abnormalty_test(image_size)
-    data_aug = [
-        transforms.EnsureTyped(
-            keys=['input', 'trans']),
-    ]
-    return transforms.Compose(base_transform + data_aug)
-
-def get_brats2021_train_transform_abnormalty_test(image_size):
-    base_transform = get_brats2021_base_transform_abnormalty_test(image_size)
-    data_aug = [
-        transforms.EnsureTyped(
-            keys=['input', 'brainmask', 'seg']),
-    ]
-    return transforms.Compose(base_transform + data_aug)
-def get_ldfdct_base_transform_abnormalty_test(image_size):
-
-    base_transform = [
-        transforms.AddChanneld(
-            keys=['input', 'trans']),
-        transforms.Resized(
-            keys=['input', 'trans'],
-            spatial_size=(image_size, image_size)),
-    ]
-
-    return base_transform
-
-def get_brats2021_base_transform_abnormalty_test(image_size):
-
-    base_transform = [
-        transforms.AddChanneld(
-            keys=['input', 'brainmask', 'seg']),
-        transforms.Resized(
-            keys=['input', 'brainmask', 'seg'],
-            spatial_size=(image_size, image_size)),
-    ]
-
-    return base_transform
-
-class BraTS2021Dataset_Cyclic(Dataset):
-    def __init__(self, data_root: str, mode: str, input_mod, trans_mod=None, transforms=None):
-        super(BraTS2021Dataset_Cyclic, self).__init__()
-
-        assert mode in ['train', 'test', 'val'], 'Unknown mode'
-        self.mode = mode
-        self.data_root = data_root
-        self.input_mod = input_mod
-
-        self.transforms = transforms
-        self.case_names_input = sorted(list(Path(os.path.join(self.data_root, input_mod)).iterdir()))
-        self.case_names_brainmask = sorted(list(Path(os.path.join(self.data_root, 'brainmask')).iterdir()))
-        self.case_names_seg = sorted(list(Path(os.path.join(self.data_root, 'seg')).iterdir()))
-        if mode == 'train':
-            self.trans_mod = trans_mod
-            self.case_names_trans = sorted(list(Path(os.path.join(self.data_root, trans_mod)).iterdir()))
-
-    def __getitem__(self, index: int) -> tuple:
-        name_input = self.case_names_input[index].name
-        name_brainmask = self.case_names_brainmask[index].name
-        name_seg = self.case_names_seg[index].name
-        base_dir_input = join(self.data_root, self.input_mod, name_input)
-        base_dir_brainmask = join(self.data_root, 'brainmask', name_brainmask)
-        base_dir_seg = join(self.data_root, 'seg', name_seg)
-        input = np.load(base_dir_input).astype(np.float32)
-
-        brain_mask = np.load(base_dir_brainmask).astype(np.float32)
-        seg = np.load(base_dir_seg).astype(np.float32)
-        if self.mode == 'train':
-            name_trans = self.case_names_trans[index].name
-            base_dir_trans = join(self.data_root, self.trans_mod, name_trans)
-            trans = np.load(base_dir_trans).astype(np.float32)
-            item = self.transforms(
-                {'input': input, 'trans': trans, 'brainmask': brain_mask, 'seg': seg})
-        else:
-            item = self.transforms(
-                {'input': input, 'brainmask': brain_mask, 'seg': seg})
-
-        return item
-
-    def __len__(self):
-        return len(self.case_names_input)
-    
 
 
-class LDFDCTDataset(Dataset):
-    def __init__(self, data_root: str, mode: str, input_mod='ld', trans_mod='fd', transforms=None):
-        super(LDFDCTDataset, self).__init__()
-        assert mode in ['train', 'test'], 'Unknown mode'
-        self.mode = mode
-        folder_name = 'LD_FD_CT_train' if self.mode == 'train' else 'LD_FD_CT_test'
-        self.data_root = os.path.join(data_root, folder_name)
-        self.input_mod = input_mod
-        self.trans_mod = trans_mod
-        self.transforms = transforms
-        
-        # Gather all sample directories
-        self.sample_dirs = sorted(
-            [d for d in Path(self.data_root).iterdir() 
-             if d.is_dir() and not d.name.startswith('.') and 'ipynb_checkpoints' not in d.name]
-        )
-        
-        self.dir_index = 0  # Index to track the current directory
-        self.pair_index = 0  # Index to track the current pair within the directory
 
-        # Cache pairs per directory
-        self.pairs_cache = []
-        self._cache_pairs()
-       
-
-    def _cache_pairs(self):
-        # Cache all image pairs from the current directory
-        sample_dir = self.sample_dirs[self.dir_index]
-        # print("sample_dir", sample_dir)
-        
-        
-        image_files = list(sample_dir.glob("*.png"))
-        
-        
-        input_images = [img for img in image_files if self.input_mod in img.name]
-        print("self.trans_mod",self.trans_mod)
-        trans_images = [img for img in image_files if self.trans_mod in img.name]
-        # print("input_images", len(input_images))
-        # print("trans_images", len(trans_images))
-        
-        for input_img in input_images:
-            identifier = input_img.stem.split(f"_{self.input_mod}")[0]
-            trans_img = next((img for img in trans_images if img.stem.startswith(identifier)), None)
-            if trans_img:
-                self.pairs_cache.append((input_img, trans_img))
-
-        
-
-    def __getitem__(self, index: int) -> dict:
-        # Check if we need to refresh the cache
-        if self.pair_index >= len(self.pairs_cache):
-            self.dir_index =(self.dir_index + 1) % len(self.sample_dirs)
-            self._cache_pairs()
-
-        # Get the current pair
-        # print("self.pairs_cache", len(self.pairs_cache))
-        # print("self.pair_index", self.pair_index)
-        input_img_path, trans_img_path = self.pairs_cache[self.pair_index]
-        self.pair_index += 1
-        
-        # Load images
-        input_image = load_image(input_img_path)
-        trans_image = load_image(trans_img_path)
-        print("input_image", input_image.shape)
-        print("trans_image", trans_image.shape)
-        data_dict = {'input': input_image, 'trans': trans_image}
-        if self.transforms:
-            data_dict = self.transforms(data_dict)
-
-        return data_dict
-
-    def __len__(self):
-        return sum(len(list(Path(dir).glob("*.png"))) // 2 for dir in self.sample_dirs)
 
 
 
@@ -317,11 +144,13 @@ class OxAAADataset(Dataset):
         self.trans_dir = Path(self.data_root) / 'contrast'
 
         self.input_mask_dir = Path(self.data_root) / 'noncontrastmask'
-        self.trans_mask_dir = Path(self.data_root) / 'contrastmask'
+        self.trans_mask_dir = Path(self.data_root) / 'contrastaortamask'
         if self.mask_type == 'lumen':
             self.trans_lumenmask_dir = Path(self.data_root) / 'contrastlumenmask'
         else:
             self.trans_lumenmask_dir = Path(self.data_root) / 'contrastthrombusmask'
+
+        
         
 
     
@@ -331,9 +160,12 @@ class OxAAADataset(Dataset):
             self.filter = set(self.filter.tolist())  # Convert to set for faster lookup
         else:
             self.filter = None
+        
 
         # List of all image names in the input directory
         self.two_labels_input_images = sorted([img for img in self.input_dir.glob('*.nii.gz') if self.filter is None or img.name.split('/')[0] in self.filter])
+        print(len(self.two_labels_input_images))
+        
         
 
 
@@ -350,6 +182,8 @@ class OxAAADataset(Dataset):
                 trans_img_path = self.trans_dir / input_img.name
                 trans_mask_path = self.trans_mask_dir / input_img.name
                 trans_lumen_mask_path = self.trans_lumenmask_dir / input_img.name
+
+                
                 
                 if  input_mask_path.exists() and trans_img_path.exists() and trans_mask_path.exists() and trans_lumen_mask_path.exists():
                     pairs.append(( trans_img_path, trans_mask_path, input_img, input_mask_path, trans_lumen_mask_path))
@@ -363,6 +197,8 @@ class OxAAADataset(Dataset):
                 trans_mask_path = self.trans_mask_dir / input_img.name
                 
                 trans_lumen_mask_path = self.trans_lumenmask_dir / input_img.name
+
+               
                 
                 if trans_img_path.exists()  and trans_mask_path.exists() and input_mask_path.exists()   and trans_lumen_mask_path.exists():
                     pairs.append(( trans_img_path, trans_mask_path, input_img, input_mask_path, trans_lumen_mask_path))
@@ -563,11 +399,7 @@ class OxAAADataset_partial(Dataset):
         self.trans_dir = Path(self.data_root) / 'contrast'
 
         self.input_mask_dir = Path(self.data_root) / 'noncontrastmask'
-        self.trans_mask_dir = Path(self.data_root) / 'contrastmask'
-        
-        
-
-    
+        self.trans_mask_dir = Path(self.data_root) / 'contrastaortamask'
 
         if filter is not None:
             self.filter = np.load(filter, allow_pickle=True)  # Load filenames from the npy file
@@ -674,13 +506,6 @@ class OxAAADataset_partial(Dataset):
 
             # Truncate at threshold and normalize between [-1, 1]
             thresh = 15
-           
-
-            
-
-
-    
-  
 
             data_dict = {'contrast': trans_image, 'contrast_mask_tolerated':trans_mask_tolerated, 'noncon_arota':input_contrast, 'trans_hist':trans_hist,'input_hist':input_hist , 'noncontrast_mask_tolerated': input_mask_tolerated,'square_mask': square_mask, 'trans_lumen_mask_tolerated': trans_lumen_mask_tolerated, 'm_sdf':m_sdf, 'input_img': input_img}
 
@@ -737,26 +562,8 @@ class OxAAADataset_partial(Dataset):
             # Compute histogram
             input_hist = torch.histc(masked_input, bins=32, min=-1, max=1) / denominator
 
-
-            
-
             # Truncate at threshold and normalize between [-1, 1]
             thresh = 15
-            
-
-            
-
-
-            
-            
-
-            
-
-            
-
-
-    
-  
 
             data_dict = {'contrast': trans_image, 'contrast_mask_tolerated':trans_mask_tolerated, 'noncon_arota':input_contrast, 'trans_hist':trans_hist,'input_hist':input_hist , 'noncontrast_mask_tolerated': input_mask_tolerated,'square_mask': square_mask}
 
