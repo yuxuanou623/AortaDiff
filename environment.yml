@@ -1,4 +1,4 @@
-name: MMCCD
+name: AortaDiff
 channels:
   - pytorch
   - defaults
