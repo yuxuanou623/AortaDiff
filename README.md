@@ -15,3 +15,7 @@ AortaDiff is a diffusion-based framework designed for **contrast-free abdominal 
 ## 📖 Paper
 If you use this codebase, please cite our work:
 
+## Acknowledgements
+This code is based on:  
+- [MMCCD](https://github.com/ZiyunLiang/MMCCD)  
+- [Guided Diffusion](https://github.com/openai/guided-diffusion/tree/main/guided_diffusion)  
