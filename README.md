@@ -1,4 +1,4 @@
-# 🫀 AortaDiff: A Unified Multitask Diffusion Framework For Contrast-Free AAA Imaging
+# 🫀 AortaDiff: A Unified Multitask Diffusion Framework For Contrast-Free AAA Imaging (WACV 2026)
 
 ![Visualization](visualization/figure.jpg)
 
