@@ -27,7 +27,6 @@ def get_data_loader(dataset, data_path, config, input, trans, filter, split_set=
             loader = get_data_loader_oxaaa_cyclic(input, trans, filter, data_path, config.sampling.batch_size, config.score_model.image_size,
                                            split_set=split_set,mask_type = mask_type)
         elif split_set == "val":
-            print("split_set == val")
             loader = get_data_loader_oxaaa_cyclic(input, trans, filter, data_path, config.sampling.batch_size, config.score_model.image_size,
                                            split_set=split_set,mask_type = mask_type)
 

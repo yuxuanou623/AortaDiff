@@ -7,7 +7,6 @@ def get_default_configs():
     config.device = th.device('cuda') if th.cuda.is_available() else th.device('cpu')
     config.seed = 1
     config.data = data = ml_collections.ConfigDict()
-    data.path = "/home/trin4156/Desktop/datasets/nnunet/nnunet_raw/Dataset102_nonconoxaaa2d/OxAAA"
     data.sequence_translation = False # bool
     data.healthy_data_percentage = None
 

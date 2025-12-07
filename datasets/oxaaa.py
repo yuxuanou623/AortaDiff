@@ -126,7 +126,47 @@ def get_oxaaa_train_transform_abnormalty_train_partial(image_size):
 
 
 class OxAAADataset(Dataset):
-    def __init__(self, data_root: str, mode: str, input_mod='noncontrast', trans_mod='contrast',transforms=None, filter=None, mask_type = 'lumen'):
+
+    """
+    Dataset for loading OxAAA dataset with  contrast / non-contrast images, aorta mask for contrast/ noncontrast images, and lumen mask for contrast / noncontrast images.
+
+    Args:
+        data_root (str):
+            Root directory containing all dataset files.
+
+        mode (str):
+            Dataset split to load. Typically: 'train', 'val', or 'test'.
+
+        input_mod (str, optional):
+            Input modality to load. Default is 'noncontrast'.  
+            
+
+        trans_mod (str, optional):
+            Target modality to load. Default is 'contrast'
+
+        transforms (callable, optional):
+            A torchvision-style transform pipeline applied to the loaded data.
+
+        filter (callable, optional):
+            The numpy file that contain all the file names used after filtering.
+
+        mask_type (str, optional):
+            Type of mask to load or generate, e.g.:
+                - 'lumen'
+                - 'thrombus'
+            Default is 'lumen'.
+    """
+
+    def __init__(
+        self,
+        data_root: str,
+        mode: str,
+        input_mod: str = 'noncontrast',
+        trans_mod: str = 'contrast',
+        transforms=None,
+        filter=None,
+        mask_type: str = 'lumen'
+    ):
         super(OxAAADataset, self).__init__()
         assert mode in ['train', 'test', 'val'], 'Unknown mode'
         self.mode = mode
@@ -145,15 +185,11 @@ class OxAAADataset(Dataset):
 
         self.input_mask_dir = Path(self.data_root) / 'noncontrastmask'
         self.trans_mask_dir = Path(self.data_root) / 'contrastaortamask'
+
         if self.mask_type == 'lumen':
             self.trans_lumenmask_dir = Path(self.data_root) / 'contrastlumenmask'
         else:
             self.trans_lumenmask_dir = Path(self.data_root) / 'contrastthrombusmask'
-
-        
-        
-
-    
 
         if filter is not None:
             self.filter = np.load(filter, allow_pickle=True)  # Load filenames from the npy file
@@ -164,10 +200,6 @@ class OxAAADataset(Dataset):
 
         # List of all image names in the input directory
         self.two_labels_input_images = sorted([img for img in self.input_dir.glob('*.nii.gz') if self.filter is None or img.name.split('/')[0] in self.filter])
-        print(len(self.two_labels_input_images))
-        
-        
-
 
         # Dictionary to quickly find corresponding images
         self.image_pairs = self._cache_pairs()
@@ -182,8 +214,6 @@ class OxAAADataset(Dataset):
                 trans_img_path = self.trans_dir / input_img.name
                 trans_mask_path = self.trans_mask_dir / input_img.name
                 trans_lumen_mask_path = self.trans_lumenmask_dir / input_img.name
-
-                
                 
                 if  input_mask_path.exists() and trans_img_path.exists() and trans_mask_path.exists() and trans_lumen_mask_path.exists():
                     pairs.append(( trans_img_path, trans_mask_path, input_img, input_mask_path, trans_lumen_mask_path))
@@ -191,40 +221,31 @@ class OxAAADataset(Dataset):
         else:  # Otherwise, include masks
             # Pair images with the same name in input and trans directories
             for input_img in self.two_labels_input_images:
-                trans_img_path = self.trans_dir / input_img.name
-                
+                trans_img_path = self.trans_dir / input_img.name                
                 input_mask_path = self.input_mask_dir / input_img.name
-                trans_mask_path = self.trans_mask_dir / input_img.name
-                
-                trans_lumen_mask_path = self.trans_lumenmask_dir / input_img.name
-
-               
-                
+                trans_mask_path = self.trans_mask_dir / input_img.name               
+                trans_lumen_mask_path = self.trans_lumenmask_dir / input_img.name        
                 if trans_img_path.exists()  and trans_mask_path.exists() and input_mask_path.exists()   and trans_lumen_mask_path.exists():
                     pairs.append(( trans_img_path, trans_mask_path, input_img, input_mask_path, trans_lumen_mask_path))
         return pairs
 
     def __getitem__(self, index):
-        # Depending on the mode, the pairs may have different numbers of elements
+
         if self.mode == 'test':
             trans_img_path,trans_mask_path , input_img_path, input_mask_path, trans_lumen_mask_path= self.image_pairs[index]
-            # Load images
 
             trans_image = nib.load(trans_img_path).get_fdata()
-           
             trans_mask = nib.load(trans_mask_path).get_fdata()
             input_img = nib.load(input_img_path).get_fdata()
             input_mask = nib.load(input_mask_path).get_fdata()
             trans_lumen_mask = nib.load(trans_lumen_mask_path).get_fdata()
-            # coarse_mask_path = nib.load(coarse_mask_path).get_fdata()
 
             tolerance = 1e-3
-            
-            
+                        
             trans_mask_tolerated = (np.abs(trans_mask - 1) < tolerance).astype(int)
             input_mask_tolerated = (np.abs(input_mask - 1) < tolerance).astype(int)
             trans_lumen_mask_tolerated= (np.abs(trans_lumen_mask - 1) < tolerance).astype(int)
-            #coarse_mask_path_tolerated= (np.abs(coarse_mask_path - 1) < tolerance).astype(int)
+
             y, x = np.where(input_mask_tolerated == 1)
             if len(x)==0:
                 print("input_mask_path",input_mask_path)
@@ -265,22 +286,34 @@ class OxAAADataset(Dataset):
             m_sdf = np.clip(m_sdf, -thresh, thresh)  # a cleaner way
             m_sdf /= thresh
 
-            # coarse_lumen_bd = np.abs(binary_erosion(coarse_mask_path_tolerated) - coarse_mask_path_tolerated)
-            # coarse_distance = distance_transform_edt(np.where(coarse_lumen_bd== 0., np.ones_like(coarse_lumen_bd), np.zeros_like(coarse_lumen_bd)))
-            # coarse_m_sdf = np.where(coarse_mask_path_tolerated == 1, coarse_distance * -1, coarse_distance)  # ensure signed DT
 
-            # Truncate at threshold and normalize between [-1, 1]
-            thresh = 15
-            # coarse_m_sdf = np.clip(coarse_m_sdf, -thresh, thresh)  # a cleaner way
-            # coarse_m_sdf /= thresh
+            data_dict = {
+                "contrast": trans_image,                       # Contrast-enhanced input image
 
-            
+                "contrast_mask_tolerated": trans_mask_tolerated,
+                    # Aorta mask for contrast image (tolerated version)
+
+                "noncon_arota": input_contrast,                # Non-contrast aorta region image
+
+                "trans_hist": trans_hist,                      # Histogram of transformed image
+                "input_hist": input_hist,                      # Histogram of input image
+
+                "noncontrast_mask_tolerated": input_mask_tolerated,
+                    # Mask for non-contrast image (tolerated version)
+
+                "square_mask": square_mask,
+                    # Reconstruction ROI — square mask used for reconstruction loss
+
+                "trans_lumen_mask_tolerated": trans_lumen_mask_tolerated,
+                    # Lumen mask for transformed image (tolerated version)
+
+                "m_sdf": m_sdf,
+                    # Signed Distance Field (SDF) for transformed-image lumen mask
+
+                "input_img": input_img                         # Original input image (non-cropped)
+            }
 
 
-    
-  
-
-            data_dict = {'contrast': trans_image, 'contrast_mask_tolerated':trans_mask_tolerated, 'noncon_arota':input_contrast, 'trans_hist':trans_hist,'input_hist':input_hist , 'noncontrast_mask_tolerated': input_mask_tolerated,'square_mask': square_mask, 'trans_lumen_mask_tolerated': trans_lumen_mask_tolerated, 'm_sdf':m_sdf, 'input_img': input_img}
 
 
 
@@ -295,18 +328,11 @@ class OxAAADataset(Dataset):
             input_mask = nib.load(input_mask_path).get_fdata()
             
             trans_lumen_mask = nib.load(trans_lumen_mask_path).get_fdata()
-          
-            
 
             tolerance = 1e-3
-            
-            
+           
             trans_mask_tolerated = (np.abs(trans_mask - 1) < tolerance).astype(int)
             input_mask_tolerated = (np.abs(input_mask - 1) < tolerance).astype(int)
-            
-
-
-            
             
             y, x = np.where(input_mask_tolerated == 1)
             if len(x)==0:
@@ -337,17 +363,10 @@ class OxAAADataset(Dataset):
 
             # Compute histogram
             input_hist = torch.histc(masked_input, bins=32, min=-1, max=1) / denominator
-
-
             
 
             # Truncate at threshold and normalize between [-1, 1]
             thresh = 15
-            
-
-            
-
-
             
             trans_lumen_mask = nib.load(trans_lumen_mask_path).get_fdata()
             trans_lumen_mask_tolerated= (np.abs(trans_lumen_mask - 1) < tolerance).astype(int)
@@ -356,18 +375,28 @@ class OxAAADataset(Dataset):
             m_sdf = np.where(trans_lumen_mask_tolerated == 1, distance * -1, distance)  # ensure signed DT
             m_sdf = np.clip(m_sdf, -thresh, thresh)  # a cleaner way
             m_sdf /= thresh
-            
-            
 
-            
+            data_dict = {
+                "contrast": trans_image,                       # Contrast-enhanced input image
+                "contrast_mask_tolerated": trans_mask_tolerated,  
+                    # Aorta mask for contrast image (tolerated version)
 
-            
+                "noncon_arota": input_contrast,                # Non-contrast aorta region image
 
+                "trans_hist": trans_hist,                      # Histogram of transformed image
+                "input_hist": input_hist,                      # Histogram of input image
 
-    
-  
+                "noncontrast_mask_tolerated": input_mask_tolerated,
+                    # Mask for non-contrast image (tolerated version)
 
-            data_dict = {'contrast': trans_image, 'contrast_mask_tolerated':trans_mask_tolerated, 'noncon_arota':input_contrast, 'trans_hist':trans_hist,'input_hist':input_hist , 'noncontrast_mask_tolerated': input_mask_tolerated,'square_mask': square_mask, 'trans_lumen_mask_tolerated': trans_lumen_mask_tolerated, 'm_sdf':m_sdf}
+                "square_mask": square_mask,
+                    # Square ROI mask used for reconstruction loss
+
+                "trans_lumen_mask_tolerated": trans_lumen_mask_tolerated,
+                    # Lumen mask for transformed image (tolerated version)
+
+                "m_sdf": m_sdf                                 # Signed distance field (SDF) for lumen mask
+            }
 
 
 
@@ -382,7 +411,44 @@ class OxAAADataset(Dataset):
 
 
 class OxAAADataset_partial(Dataset):
-    def __init__(self, data_root: str, mode: str, input_mod='noncontrast', trans_mod='contrast',transforms=None, filter=None):
+    """
+    OxAAA Dataset Loader for data that does not have the lumen mask segmentation.
+
+
+    Args:
+        data_root (str):
+            Root directory containing the dataset files.
+
+        mode (str):
+            Dataset split to load.
+                - 'train'
+                - 'val'
+                - 'test'
+
+        input_mod (str, optional):
+            Input modality to load.
+            Default: 'noncontrast'.
+
+        trans_mod (str, optional):
+            Target modality to load.
+            Default: 'contrast'.
+
+        transforms (callable, optional):
+            The numpy file that contain all the file names used after filtering.
+
+        filter (callable, optional):
+            Optional filter function used to skip or preprocess certain samples.
+            Should accept a sample path or metadata and return True/False.
+    """
+    def __init__(
+        self,
+        data_root: str,
+        mode: str,
+        input_mod: str = 'noncontrast',
+        trans_mod: str = 'contrast',
+        transforms=None,
+        filter=None
+    ):
         super(OxAAADataset_partial, self).__init__()
         assert mode in ['train', 'test', 'val'], 'Unknown mode'
         self.mode = mode
@@ -507,7 +573,30 @@ class OxAAADataset_partial(Dataset):
             # Truncate at threshold and normalize between [-1, 1]
             thresh = 15
 
-            data_dict = {'contrast': trans_image, 'contrast_mask_tolerated':trans_mask_tolerated, 'noncon_arota':input_contrast, 'trans_hist':trans_hist,'input_hist':input_hist , 'noncontrast_mask_tolerated': input_mask_tolerated,'square_mask': square_mask, 'trans_lumen_mask_tolerated': trans_lumen_mask_tolerated, 'm_sdf':m_sdf, 'input_img': input_img}
+            data_dict = {
+                "contrast": trans_image,                       # Contrast-enhanced transformed image
+                "contrast_mask_tolerated": trans_mask_tolerated,  
+                    # Aorta mask for contrast image (tolerated version)
+
+                "noncon_arota": input_contrast,                # Non-contrast aorta-region image
+
+                "trans_hist": trans_hist,                      # Histogram of transformed image
+                "input_hist": input_hist,                      # Histogram of input image
+
+                "noncontrast_mask_tolerated": input_mask_tolerated,
+                    # Mask for non-contrast input image (tolerated version)
+
+                "square_mask": square_mask,
+                    # Square ROI mask used for reconstruction or loss calculations
+
+                "trans_lumen_mask_tolerated": trans_lumen_mask_tolerated,
+                    # Lumen mask for transformed image (tolerated version)
+
+                "m_sdf": m_sdf,                                # Signed Distance Field (SDF) from lumen mask
+
+                "input_img": input_img                         # Original input (non-cropped) image
+            }
+
 
 
 
@@ -565,7 +654,20 @@ class OxAAADataset_partial(Dataset):
             # Truncate at threshold and normalize between [-1, 1]
             thresh = 15
 
-            data_dict = {'contrast': trans_image, 'contrast_mask_tolerated':trans_mask_tolerated, 'noncon_arota':input_contrast, 'trans_hist':trans_hist,'input_hist':input_hist , 'noncontrast_mask_tolerated': input_mask_tolerated,'square_mask': square_mask}
+            data_dict = {
+                "contrast": trans_image,                       # Contrast-enhanced transformed image
+                "contrast_mask_tolerated": trans_mask_tolerated, # Aorta mask for the contrast image (tolerated version)
+
+                "noncon_arota": input_contrast,                # Non-contrast aorta-region image
+
+                "trans_hist": trans_hist,                      # Histogram of the transformed image
+                "input_hist": input_hist,                      # Histogram of the input image
+
+                "noncontrast_mask_tolerated": input_mask_tolerated, # Aora Mask for the non-contrast input image (tolerated version)
+
+                "square_mask": square_mask                     # Square ROI mask for reconstruction/loss
+            }
+
 
 
 

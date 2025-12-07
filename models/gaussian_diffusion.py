@@ -216,6 +216,33 @@ class GaussianDiffusion:
     Ported directly from here, and then adapted over time to further experimentation.
     https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/diffusion_utils_2.py#L42
 
+    Edits for AortaDiff Project
+    -----------------
+    This class has been extended with several project-specific edits to
+    support aortic-region reconstruction and the RePaint recursive
+    sampling strategy:
+
+    1. training_losses(...) behaviour
+       - The training_losses function now computes:
+           * reconstruction loss: reconstruction error computed inside the
+             supplied `square_mask` (region-of-interest). This term encourages
+             the network to accurately reconstruct the ROI (aortic region).
+           * mask loss: mask-aware losses computed inside `lumen_mask` (if
+             provided/enabled). This includes optional MSE and LPIPS-style
+             perceptual losses, each weighted by `mask_loss_weight` and
+             `mask_lpips_weight`, respectively.
+     
+    2. p_sample(...) 
+       - p_sample has been modified to produce a new sample that only
+         updates the ROI (aortic region) while preserving the background.
+         
+
+    3. p_sampling_loop_progressive(...) 
+       -The sampling loop now supports the RePaint recursive sampling strategy
+         (Andreas Lugmayr et al., "RePaint: Inpainting using Denoising Diffusion Probabilistic Models") to improve inpainting
+         quality inside the ROI.
+          
+
     :param betas: a 1-D numpy array of betas for each diffusion timestep,
                   starting at T and going to 1.
     :param model_mean_type: a ModelMeanType determining what the model outputs.
@@ -384,15 +411,10 @@ class GaussianDiffusion:
 
         B, C = x.shape[:2]
         assert t.shape == (B,)
-        # x=torch.zeros(x.shape).cuda()
-       
-        
-        
+      
         x_in = th.cat((x, cond), 1)
         model_output, updated_mask = model(x=x_in, timesteps = self._scale_timesteps(t),**model_kwargs)
-        
-        
-        
+
         updated_mask_1 = updated_mask[1, :, :, :].squeeze(0) 
         # If it's a float tensor (e.g. in [0,1]), scale to [0,255]
         if updated_mask_1.dtype == th.float32 or updated_mask_1.max() <= 1.0:
@@ -459,9 +481,7 @@ class GaussianDiffusion:
         else:
             raise NotImplementedError(self.model_mean_type)
 
-        # assert (
-        #         model_mean.shape == model_log_variance.shape == pred_xstart.shape == x.shape
-        # )x
+
         return {
             "model_output": model_output,
             "mean": model_mean,
@@ -569,9 +589,7 @@ class GaussianDiffusion:
 
         mask = mask.to(dtype=th.int)
     
-        x = (mask * (x)+(1-mask) * (weighed_gt))
-        
-
+        x = (mask * (x)+(1-mask) * (weighed_gt))  # only reconstruct the ROI area ( aortic region)
         
         out = self.p_mean_variance(
             model,
@@ -664,6 +682,7 @@ class GaussianDiffusion:
         """
         Generate samples from the model and yield intermediate samples from
         each timestep of diffusion.
+        Add recursive sampling in RePaint.
 
         Arguments are the same as p_sample_loop().
         Returns a generator over dicts, where each dict is the return value of
@@ -693,9 +712,6 @@ class GaussianDiffusion:
                 time_pairs = tqdm(time_pairs)
             for t_last, t_cur in time_pairs:
                 
-
-                
-                
                 idx_wall += 1
                 t_last_t = t_last
                 if t_cur < t_last: 
@@ -704,15 +720,9 @@ class GaussianDiffusion:
                         
                         cond_forward =  cond
                         noncon_img = test_data_input
-                        
-
-                        
-                    
+                   
                         if ddim == 'False':
-
-                            
-                            
-                    
+                   
                             out_forward = self.p_sample(
                                 model_forward,
                                 img_forward,
@@ -737,7 +747,7 @@ class GaussianDiffusion:
                     prev_img_forward = out_forward["sample"]
                     prev_mask_forward = out_forward["coarse_mask"]
                     if th.all(t_forward == 0):
-                        prev_img_forward = out_forward["sample"]*test_data_seg + noncon_img*(1-test_data_seg)
+                        prev_img_forward = out_forward["sample"]*test_data_seg + noncon_img*(1-test_data_seg)  
 
    
                     x_yield = [prev_img_forward, out_forward["mask"], out_forward["weightedgt"], out_forward["x"], prev_mask_forward]
@@ -827,18 +837,75 @@ class GaussianDiffusion:
 
 
 
-    def training_losses(self,  model, tag, input_img, trans_img, square_mask, lumen_mask, mask_mse_loss,mask_loss_weight, mask_lpips_loss, mask_lpips_weight, loss_var,use_kendall_loss, model_name, t,iteration, x_start_t=None, model_kwargs=None, noise=None):
+    def training_losses(
+        self,
+        model,
+        tag,
+        input_img,
+        trans_img,
+        square_mask,
+        lumen_mask,
+        mask_mse_loss,
+        mask_loss_weight,
+        mask_lpips_loss,
+        mask_lpips_weight,
+        loss_var,
+        use_kendall_loss,
+        model_name,
+        t,
+        iteration,
+        x_start_t = None,
+        model_kwargs = None,
+        noise = None,
+    ):
         """
         Compute training losses for a single timestep.
 
-        :param model: the model to evaluate loss on.
-        :param x_start: the [N x C x ...] tensor of inputs.
-        :param t: a batch of timestep indices.
-        :param model_kwargs: if not None, a dict of extra keyword arguments to
-            pass to the model. This can be used for conditioning.
-        :param noise: if specified, the specific Gaussian noise to try to remove.
-        :return: a dict with the key "loss" containing a tensor of shape [N].
-                 Some mean or variance settings may also have other keys.
+        This helper collects reconstruction and mask-based losses for the
+        current batch and returns a dictionary of loss terms.
+
+        Parameters
+        ----------
+        
+        model
+            The generator.
+        tag
+            Training label mode: 'full' (with lumen mask ground truth) or
+            'partial' (without lumen mask ground truth).
+        input_img
+            The input image tensor. Shape: [N, C, H, W].
+        trans_img
+            The target image tensor. Shape: [N, C, H, W].
+        square_mask
+            Square ROI mask. Shape: [N, 1, H, W].
+        lumen_mask
+            Lumen mask. Shape: [N, 1, H, W].
+        mask_mse_loss
+            Boolean flag — whether to use MSE mask loss.
+        mask_loss_weight
+            Scalar weight applied to the mask MSE loss term.
+        mask_lpips_loss
+            Boolean flag — whether to use LPIPS (perceptual) mask loss.
+        mask_lpips_weight
+            Scalar weight applied to the mask LPIPS loss term.
+        loss_var
+            nn.Parameter with shape (2,) used for uncertainty weighting (e.g. Kendall).
+        use_kendall_loss
+            If True, use the uncertainty-aware weighting scheme to combine losses.
+        model_name
+            Model identifier string, e.g. 'diffusion' or 'unet'.
+        t
+            Current diffusion timestep tensor (shape [N] or scalar).
+        iteration
+            Current training iteration number.
+        x_start_t
+            Not used (kept for API compatibility).
+        model_kwargs
+            Optional extra kwargs to forward to `model(...)` for conditioning.
+        noise
+            Optional Gaussian noise tensor used when computing denoising losses.
+
+        
         """
         if model_kwargs is None:
             model_kwargs = {}

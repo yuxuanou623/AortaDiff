@@ -12,7 +12,6 @@ import numpy as np
 import torch as th
 import blobfile as bf
 from pathlib import Path
-from skimage import morphology
 from sklearn.metrics import roc_auc_score, jaccard_score
 import torch  # If working with PyTorch tensors
 from datasets import loader
@@ -22,7 +21,6 @@ from utils.script_util import create_gaussian_diffusion, create_score_model, cre
 from utils.binary_metrics import assd_metric, sensitivity_metric, precision_metric
 sys.path.append(str(Path.cwd()))
 from tqdm import tqdm
-from PIL import Image
 import lpips
 from skimage.metrics import mean_squared_error
 
@@ -104,11 +102,6 @@ def save_images_and_calculate_metrics(batch_index, img_pred_all, img_true_all, t
 
     # Loop through the first `n` images
     for i in range(n):
-        # Normalize and convert images to [0, 255]
-        # def normalize_image(image):
-        #     image = np.squeeze(image)  # Remove channel dimension
-        #     image = ((image + 1) / 2) * 255  # Convert from [-1, 1] to [0, 255]
-        #     return image.astype(np.uint8)
         def normalize_image(image):
             image = np.squeeze(image)  # Remove channel dimension if needed
             min_val = np.min(image)
@@ -153,15 +146,13 @@ def save_images_and_calculate_metrics(batch_index, img_pred_all, img_true_all, t
         
         pred_bin = (predicted_mask_all[i,:,:,:].squeeze() <= 0).astype(np.uint8)
         gt_bin = (test_gt_m_sdf[i,:,:,:].squeeze() <= 0).astype(np.uint8)
-        print("pred_bin",pred_bin.shape)
-        print("gt_bin",gt_bin.shape)
         # Count 0s and 1s in pred_bin
         unique_pred, counts_pred = np.unique(pred_bin, return_counts=True)
-        print("pred_bin value counts:", dict(zip(unique_pred, counts_pred)))
+
 
         # Count 0s and 1s in gt_bin
         unique_gt, counts_gt = np.unique(gt_bin, return_counts=True)
-        print("gt_bin value counts:", dict(zip(unique_gt, counts_gt)))
+
 
         # Compute Dice scores
         dice_scores = dice_score(pred_bin, gt_bin)
@@ -462,9 +453,8 @@ def main(args):
             elif args.dataset == 'oxaaa':
                 
                 
-                # test_data_input = test_data_dict[1].pop('input').cuda()
+
                 test_data_input = test_data_dict.pop('input_img').cuda()
-                # test_data_seg = test_data_dict[1].pop('trans')
                 test_data_gt = test_data_dict.pop('contrast').cuda()
                 test_data_seg = test_data_dict.pop('noncontrast_mask_tolerated').cuda()
 
@@ -626,7 +616,7 @@ if __name__ == "__main__":
                         default=1000)
     parser.add_argument("--modelfilename", help="the model filename you want to sample", type=str, default='model080000ddpm_renonstruct_onlycontrust_cond_square_nonconarota_cond_mask_square_lpips_loss_joint_no_init_mask.pt')
     parser.add_argument("--filter", help="a test data npy file", type=str, default='/mnt/data/data/OxAAA/test/normalized/test_file_with_lumen.npy')
-    parser.add_argument("--sdg_lumen_mask", help="brats",  action="store_true")
+    parser.add_argument("--sdg_lumen_mask", help="lumen mask representation",  action="store_true")
     parser.add_argument("--use_thrombus_mask", help="perform thrombus segmentation instead of lumen segmentation", action="store_true")
 
     args = parser.parse_args()

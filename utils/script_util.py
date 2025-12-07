@@ -48,27 +48,6 @@ def create_score_model(config: ml_collections.ConfigDict, image_level_cond):
         image_level_cond=image_level_cond
     )
 
-def create_score_model_mask(config: ml_collections.ConfigDict, image_level_cond):
-    return factorizedunet.MaskUNetModel(
-        num_mask = config.diffusion.num_masks,
-        in_channels=config.score_model.num_input_channels,
-        model_channels=config.score_model.num_channels,
-        out_channels=(
-            config.score_model.num_input_channels
-            if not config.score_model.learn_sigma else 2 * config.score_model.num_input_channels),
-        num_res_blocks=config.score_model.num_res_blocks,
-        attention_resolutions=tuple(config.score_model.attention_ds),
-        dropout=config.score_model.dropout,
-        channel_mult=config.score_model.channel_mult,
-        use_checkpoint=False,
-        use_fp16=False,
-        num_heads=config.score_model.num_heads,
-        num_head_channels=config.score_model.num_head_channels,
-        num_heads_upsample=config.score_model.num_heads_upsample,
-        use_scale_shift_norm=config.score_model.use_scale_shift_norm,
-        resblock_updown=config.score_model.resblock_updown,
-        image_level_cond=image_level_cond,
-    )
 
 
 def create_gaussian_diffusion(config, timestep_respacing):
