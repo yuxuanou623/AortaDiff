@@ -1,7 +1,7 @@
 import ml_collections
 
 from models import gaussian_diffusion as gd
-from models import unet , factorizedunet
+from models import unet
 from models.respace import SpacedDiffusion, space_timesteps
 
 def create_score_model_dual_decoder(config: ml_collections.ConfigDict, image_level_cond, hist=False, lumenmask=False):

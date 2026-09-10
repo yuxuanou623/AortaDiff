@@ -738,6 +738,8 @@ class GaussianDiffusion:
                                 model_forward,
                                 img_forward,
                                 cond_forward,
+                                test_data_seg,
+                                noncon_img,
                                 t_forward,
                                 clip_denoised=clip_denoised,
                                 model_kwargs=model_kwargs,
@@ -785,6 +787,8 @@ class GaussianDiffusion:
             model,
             x,
             cond,
+            mask,
+            noncon_img,
             t,
             clip_denoised=True,
             cond_fn=None,
@@ -794,8 +798,14 @@ class GaussianDiffusion:
         """
         Sample x_{t-1} from the model using DDIM.
 
-        Same usage as p_sample().
+        Same usage / return keys as p_sample().
         """
+        noise = th.randn_like(noncon_img)
+        weighed_gt = self.q_sample(noncon_img, noise, self._scale_timesteps(t))
+
+        mask = mask.to(dtype=th.int)
+        x = (mask * x + (1 - mask) * weighed_gt)  # only reconstruct the ROI (aortic region)
+
         out = self.p_mean_variance(
             model,
             x,
@@ -828,7 +838,16 @@ class GaussianDiffusion:
         )  # no noise when t == 0
         sample = mean_pred + nonzero_mask * sigma * noise
 
-        result_dict = {"sample": sample, "pred_xstart": out["pred_xstart"], "score_mean": score_mean}
+        result_dict = {
+            "sample": sample,
+            "pred_xstart": out["pred_xstart"],
+            "model_output": out["model_output"],
+            "mask": mask,
+            "weightedgt": weighed_gt,
+            "x": x,
+            "coarse_mask": out["coarse_mask"],
+            "score_mean": score_mean,
+        }
         if cond_fn is not None:
             result_dict.update({"class_cond": out["class_cond"]})
 

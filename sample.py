@@ -551,7 +551,10 @@ def main(args):
                 error = np.array(error)
             
                 
-                output_folder_pred = "/mnt/data/data/evaluation/predict" +filename[:-3] + "timestep1000new"# Change to your actual folder
+                output_folder_pred = os.path.join(
+                    args.output_dir,
+                    "predict" + filename[:-3] + f"timestep{args.timestep_respacing}",
+                )
             
                 # save_images(img_pred_all, img_true_all, trans_all,output_folder_pred, output_folder_true,output_folder_trans,num_sample)
                 
@@ -618,6 +621,12 @@ if __name__ == "__main__":
     parser.add_argument("--filter", help="a test data npy file", type=str, default='/mnt/data/data/OxAAA/test/normalized/test_file_with_lumen.npy')
     parser.add_argument("--sdg_lumen_mask", help="lumen mask representation",  action="store_true")
     parser.add_argument("--use_thrombus_mask", help="perform thrombus segmentation instead of lumen segmentation", action="store_true")
+    parser.add_argument(
+        "--output_dir",
+        help="directory to save prediction images and metrics",
+        type=str,
+        default="/work/trin4156/AortaDiff/evaluation",
+    )
 
     args = parser.parse_args()
     print(args.dataset)
